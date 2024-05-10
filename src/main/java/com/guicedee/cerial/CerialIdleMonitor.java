@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-import static com.guicedee.cerial.enumerations.ComPortStatus.Silent;
+import static com.guicedee.cerial.enumerations.ComPortStatus.*;
 
 @Getter
 @Setter
@@ -32,8 +32,8 @@ public class CerialIdleMonitor implements Runnable
     {
         this.connection = connection;
         previousStatus = connection.getComPortStatus();
-        initialDelay = 2000;
-        period = 1000;
+        initialDelay = 2;
+        period = 1;
         //10 minutes
         seconds = (int) TimeUnit.SECONDS.toSeconds(60 * 10);
     }
@@ -70,9 +70,20 @@ public class CerialIdleMonitor implements Runnable
     @Override
     public void run()
     {
-        if (connection.getLastMessageTime()
+        if(connection.getComPortStatus() == Idle)
+        {
+            return;
+        }
+        if (connection.getLastMessageTime() == null)
+        {
+            if(!onlineServerStatus.contains(connection.getComPortStatus()))
+            {
+                connection.setComPortStatus(Offline);
+            }
+        }
+        else if (connection.getLastMessageTime()
                       .isBefore(LocalDateTime.now()
-                                             .minusMinutes(TimeUnit.MINUTES.convert(seconds, TimeUnit.SECONDS))) &&
+                                             .minusSeconds(seconds)) &&
                 (connection.getComPortStatus() != Silent && ComPortStatus.onlineServerStatus.contains(connection.getComPortStatus())))
         {
             connection.setComPortStatus(ComPortStatus.Idle);

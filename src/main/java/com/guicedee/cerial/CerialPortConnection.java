@@ -17,6 +17,7 @@ import gnu.io.UnsupportedCommOperationException;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import lombok.SneakyThrows;
 import lombok.extern.java.Log;
 
 import java.io.DataInputStream;
@@ -73,15 +74,15 @@ public class CerialPortConnection
         this.comPort = comPort;
         this.baudRate = baudRate;
         this.serialPort = new NRSerialPort<>(getComPortName(), baudRate.toInt());
-        this.setMonitor(new CerialIdleMonitor(this, 2000, 1000, seconds));
+        this.setMonitor(new CerialIdleMonitor(this, 2, 1, seconds));
     }
 
     public CerialPortConnection(int comPort, BaudRate baudRate)
     {
-        this(comPort, baudRate, 60 * 10);
+        this(comPort, baudRate, 60* 10);
     }
 
-    public CerialPortConnection connect() throws UnsupportedCommOperationException
+    public CerialPortConnection connect()
     {
         beforeConnect();
         try
@@ -95,6 +96,15 @@ public class CerialPortConnection
         {
             log.log(Level.SEVERE, "Error connecting to port", e);
             onConnectError(e, ComPortStatus.GeneralException);
+        }
+        return this;
+    }
+
+    public CerialPortConnection disconnect()
+    {
+        if (serialPort.isConnected())
+        {
+            serialPort.disconnect();
         }
         return this;
     }
@@ -298,6 +308,7 @@ public class CerialPortConnection
             {
                 CallScopeProperties properties = IGuiceContext.get(CallScopeProperties.class);
                 properties.setSource(CallScopeSource.SerialPort);
+                setComPortStatus(Running);
                 comPortRead.accept(Arrays.copyOf(bytes, messageEnd), me());
                 workedOn = true;
             }
@@ -349,6 +360,7 @@ public class CerialPortConnection
         }
     }
 
+    @SneakyThrows
     public void write(String message, boolean... checkForEndOfCharacter)
     {
         if ((checkForEndOfCharacter != null && checkForEndOfCharacter.length == 0) || (checkForEndOfCharacter != null && checkForEndOfCharacter[0]))
@@ -366,6 +378,11 @@ public class CerialPortConnection
             {
                 throw new SerialPortException("Unable to fix message and add end of character - " + message, e);
             }
+        }
+        if (!message.endsWith("" + (char)serialPort.getSerialPortInstance()
+                                             .getEndOfInputChar()))
+        {
+            log.warning("Message being sent on stream without an end character - " + message);
         }
         if (serialPort.isConnected() && !message.trim()
                                                 .isEmpty())
