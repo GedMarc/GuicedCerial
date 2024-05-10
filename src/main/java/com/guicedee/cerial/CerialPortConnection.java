@@ -19,6 +19,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.SneakyThrows;
 import lombok.extern.java.Log;
+import org.apache.commons.lang3.function.TriConsumer;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -60,6 +61,7 @@ public class CerialPortConnection
     private BiConsumer<CerialPortConnection, ComPortStatus> comPortStatusUpdate;
     @JsonIgnore
     private BiConsumer<byte[], CerialPortConnection> comPortRead;
+    private TriConsumer<Throwable, CerialPortConnection,ComPortStatus> comPortError;
     @JsonIgnore
     private CerialIdleMonitor monitor;
 
@@ -131,7 +133,11 @@ public class CerialPortConnection
 
     public CerialPortConnection onConnectError(Throwable e, ComPortStatus status)
     {
-
+        if (comPortError != null)
+        {
+            comPortError.accept(e,this,status);
+        }
+        setComPortStatus(status);
         return this;
     }
 
@@ -239,7 +245,6 @@ public class CerialPortConnection
                         try
                         {
                             byte[] bytes = new byte[0];
-                            boolean concat = false;
                             while (!Thread.interrupted())
                             {
                                 synchronized (readWriteLock)
@@ -270,34 +275,61 @@ public class CerialPortConnection
                                 }
                             }
                         }
-                        catch (Exception e)
+                        catch (Throwable e)
                         {
-                            setComPortStatus(GeneralException);
-                            throw new RuntimeException(e);
+                            onConnectError(new SerialPortException("Exception in event listener thread [" + getComPort() + "]",e), GeneralException);
+                            throw new SerialPortException("Throwable took place during byte reading",e);
                         }
                     }
                 }
+                if (event.getEventType() == SerialPortEvent.HARDWARE_ERROR)
+                {
+                    onConnectError(new SerialPortException("Hardware Error on Port [" + getComPort() + "]"), GeneralException);
+                }
+                else if (event.getEventType() == SerialPortEvent.FE)
+                {
+                    onConnectError(new SerialPortException("Framing Error on Port [" + getComPort() + "]"), GeneralException);
+                }
+                else if (event.getEventType() == SerialPortEvent.PE)
+                {
+                    onConnectError(new SerialPortException("Parity Error on Port [" + getComPort() + "]"), GeneralException);
+                }
+                else if (event.getEventType() == SerialPortEvent.OE)
+                {
+                    onConnectError(new SerialPortException("Overrun Error on Port [" + getComPort() + "]"), GeneralException);
+                }
+                else if (event.getEventType() == SerialPortEvent.BI)
+                {
+                    onConnectError(new SerialPortException("Break-Interrupt Error on Port [" + getComPort() + "]"), GeneralException);
+                }
+                else if (event.getEventType() == SerialPortEvent.CTS)
+                {
+                    onConnectError(new SerialPortException("Clear to Send on Port [" + getComPort() + "]"), GeneralException);
+                }
+                else if (event.getEventType() == SerialPortEvent.OUTPUT_BUFFER_EMPTY)
+                {
+                    onConnectError(new SerialPortException("Output has empty buffer error on Port [" + getComPort() + "]"), GeneralException);
+                }
                 else
                 {
-                    log.severe("Even failure type not catered for : " + event.getEventType());
+                    onConnectError(new SerialPortException("Event failure type not catered for [" + getComPort() + "]/[" + event.getEventType() + "]"), GeneralException);
                 }
             });
         }
         catch (TooManyListenersException e)
         {
-            log.warning("A listener is already attached to the com port " + getComPortName());
+            onConnectError(new SerialPortException("Listeners already registered on Port [" + getComPort() + "]"), Missing);
+            log.log(Level.WARNING,"A listener is already attached to the com port " + getComPortName(),e);
         }
         return this;
     }
 
     private byte[] checkAndProcessBytes(byte[] bytes) throws UnsupportedCommOperationException
     {
-        boolean concat;
         int messageEnd = Bytes.indexOf(bytes, serialPort.getSerialPortInstance()
                                                         .getEndOfInputChar());
         if (messageEnd < 1)
         {
-            concat = true;
         }
         else
         {
@@ -317,7 +349,6 @@ public class CerialPortConnection
                 if (messageEnd == bytes.length)
                 {
                     bytes = new byte[0];
-                    concat = false;
                 }
                 else
                 {
@@ -326,7 +357,6 @@ public class CerialPortConnection
                                              .getBytes();
                     if (bytes.length > 0)
                     {
-                        concat = true;
                         checkAndProcessBytes(bytes);
                     }
                 }
@@ -406,8 +436,8 @@ public class CerialPortConnection
 
     private static class OSValidator
     {
-        private static String OS = System.getProperty("os.name")
-                                         .toLowerCase();
+        private static final String OS = System.getProperty("os.name")
+                                               .toLowerCase();
 
         public static boolean isWindows()
         {
@@ -427,30 +457,6 @@ public class CerialPortConnection
         public static boolean isSolaris()
         {
             return OS.contains("sunos");
-        }
-
-        public static String getOS()
-        {
-            if (isWindows())
-            {
-                return "win";
-            }
-            else if (isMac())
-            {
-                return "osx";
-            }
-            else if (isUnix())
-            {
-                return "uni";
-            }
-            else if (isSolaris())
-            {
-                return "sol";
-            }
-            else
-            {
-                return "err";
-            }
         }
     }
 }

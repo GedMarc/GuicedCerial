@@ -1,14 +1,14 @@
 package com.guicedee.cerial;
 
 import com.guicedee.cerial.enumerations.ComPortStatus;
-import com.guicedee.client.IGuiceContext;
-import com.guicedee.guicedinjection.interfaces.IJobService;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.java.Log;
 
 import java.time.LocalDateTime;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 
 import static com.guicedee.cerial.enumerations.ComPortStatus.*;
@@ -26,7 +26,8 @@ public class CerialIdleMonitor implements Runnable
 
     private ComPortStatus previousStatus;
 
-    ScheduledExecutorService scheduledExecutorService;
+    private static final ThreadFactory factory = Thread.ofVirtual().factory();
+    private static final ScheduledExecutorService scheduledExecutorService =Executors.newScheduledThreadPool(0, factory);
 
     public CerialIdleMonitor(CerialPortConnection connection)
     {
@@ -48,12 +49,9 @@ public class CerialIdleMonitor implements Runnable
 
     public void begin()
     {
-        IJobService jobService = IGuiceContext.get(IJobService.class);
-        String idleMonitorName = getIdleMonitorName();
-        scheduledExecutorService =
-                jobService.addPollingJob(idleMonitorName, this, initialDelay, period, TimeUnit.SECONDS);
+        scheduledExecutorService.scheduleAtFixedRate(this, initialDelay, period, TimeUnit.SECONDS);
         Runtime.getRuntime()
-               .addShutdownHook(new Thread(() -> scheduledExecutorService = jobService.removePollingJob(idleMonitorName)));
+               .addShutdownHook(new Thread(scheduledExecutorService::shutdownNow));
     }
 
     private String getIdleMonitorName()
@@ -63,31 +61,42 @@ public class CerialIdleMonitor implements Runnable
 
     public void end()
     {
-        IGuiceContext.get(IJobService.class)
-                     .removePollingJob(getIdleMonitorName());
+        scheduledExecutorService.shutdown();
+        try
+        {
+            scheduledExecutorService.awaitTermination(20, TimeUnit.SECONDS);
+        }
+        catch (Exception e)
+        {
+            scheduledExecutorService.shutdownNow();
+        }
     }
 
-    @Override
     public void run()
     {
-        if(connection.getComPortStatus() == Idle)
+        if (connection.getComPortStatus() == Idle)
         {
             return;
         }
         if (connection.getLastMessageTime() == null)
         {
-            if(!onlineServerStatus.contains(connection.getComPortStatus()))
+            if (!onlineServerStatus.contains(connection.getComPortStatus()))
             {
                 connection.setComPortStatus(Offline);
             }
         }
-        else if (connection.getLastMessageTime()
-                      .isBefore(LocalDateTime.now()
-                                             .minusSeconds(seconds)) &&
-                (connection.getComPortStatus() != Silent && ComPortStatus.onlineServerStatus.contains(connection.getComPortStatus())))
+        else if (
+                (connection.getComPortStatus() != Silent &&
+                        ComPortStatus.onlineServerStatus.contains(connection.getComPortStatus())) &&
+                        (connection.getLastMessageTime()
+                                   .isBefore(LocalDateTime.now()
+                                                          .minusSeconds(seconds))
+
+                        ))
         {
             connection.setComPortStatus(ComPortStatus.Idle);
         }
     }
+
 
 }

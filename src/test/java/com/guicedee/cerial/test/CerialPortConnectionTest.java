@@ -34,6 +34,9 @@ class CerialPortConnectionTest
             System.out.println("Received - " + new String(bytes))
             ;
         });
+        comPort5.setComPortError((exception,connection,status)->{
+            System.out.println("Connection error - " + exception + ": " + connection + " / New Status " + status);
+        });
         CerialPortConnection connect = comPort5.connect();
         while (connect.getLastMessageTime() == null)
         {
