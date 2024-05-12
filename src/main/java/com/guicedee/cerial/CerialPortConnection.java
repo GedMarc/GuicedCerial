@@ -10,14 +10,8 @@ import com.guicedee.client.CallScoper;
 import com.guicedee.client.IGuiceContext;
 import com.guicedee.guicedservlets.websockets.options.CallScopeProperties;
 import com.guicedee.guicedservlets.websockets.options.CallScopeSource;
-import gnu.io.NRSerialPort;
-import gnu.io.RXTXPort;
-import gnu.io.SerialPortEvent;
-import gnu.io.UnsupportedCommOperationException;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
-import lombok.SneakyThrows;
+import gnu.io.*;
+import lombok.*;
 import lombok.extern.java.Log;
 import org.apache.commons.lang3.function.TriConsumer;
 
@@ -27,6 +21,7 @@ import java.io.OutputStream;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.TooManyListenersException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.logging.Level;
 
@@ -37,11 +32,17 @@ import static lombok.AccessLevel.PRIVATE;
 @Setter
 @NoArgsConstructor
 @Log
+@ToString(of = {"comPort","comPortStatus"})
 public class CerialPortConnection
 {
+    @JsonIgnore
     private final Object[] readWriteLock = new Object[0];
     @JsonIgnore
     private NRSerialPort<?> serialPort;
+
+    private final AtomicBoolean outputBufferEmpty = new AtomicBoolean(false);
+    private final AtomicBoolean clearToSend = new AtomicBoolean(false);
+
     private Integer comPort;
 
     private BaudRate baudRate = BaudRate.$9600;
@@ -58,18 +59,23 @@ public class CerialPortConnection
     private OutputStream writer = null;
 
     @JsonIgnore
+    @Getter(PRIVATE)
     private BiConsumer<CerialPortConnection, ComPortStatus> comPortStatusUpdate;
     @JsonIgnore
+    @Getter(PRIVATE)
     private BiConsumer<byte[], CerialPortConnection> comPortRead;
-    private TriConsumer<Throwable, CerialPortConnection,ComPortStatus> comPortError;
+    @JsonIgnore
+    @Getter(PRIVATE)
+    private TriConsumer<Throwable, CerialPortConnection, ComPortStatus> comPortError;
     @JsonIgnore
     private CerialIdleMonitor monitor;
 
     private LocalDateTime lastMessageTime;
 
     @Inject
+    @JsonIgnore
+    @Getter(PRIVATE)
     CallScoper callScoper;
-
 
     public CerialPortConnection(int comPort, BaudRate baudRate, int seconds)
     {
@@ -81,7 +87,7 @@ public class CerialPortConnection
 
     public CerialPortConnection(int comPort, BaudRate baudRate)
     {
-        this(comPort, baudRate, 60* 10);
+        this(comPort, baudRate, 60 * 10);
     }
 
     public CerialPortConnection connect()
@@ -135,9 +141,10 @@ public class CerialPortConnection
     {
         if (comPortError != null)
         {
-            comPortError.accept(e,this,status);
+            comPortError.accept(e, this, status);
         }
         setComPortStatus(status);
+        disconnect();
         return this;
     }
 
@@ -214,6 +221,21 @@ public class CerialPortConnection
         return this;
     }
 
+    public CerialPortConnection configureForRTS()
+    {
+        serialPort.getSerialPortInstance()
+                  .setRTS(true);
+        serialPort.getSerialPortInstance()
+                  .notifyOnCTS(true);
+        serialPort.getSerialPortInstance()
+                  .notifyOnOutputEmpty(true);
+        serialPort.getSerialPortInstance().setFlowControlMode(SerialPort.FLOWCONTROL_RTSCTS_IN |
+                                              SerialPort.FLOWCONTROL_RTSCTS_OUT);
+        serialPort.getSerialPortInstance().setDTR(true);
+
+        return this;
+    }
+
     public CerialPortConnection configureNotifications()
     {
         serialPort.getSerialPortInstance()
@@ -277,12 +299,22 @@ public class CerialPortConnection
                         }
                         catch (Throwable e)
                         {
-                            onConnectError(new SerialPortException("Exception in event listener thread [" + getComPort() + "]",e), GeneralException);
-                            throw new SerialPortException("Throwable took place during byte reading",e);
+                            onConnectError(new SerialPortException("Exception in event listener thread [" + getComPort() + "]", e), GeneralException);
+                            throw new SerialPortException("Throwable took place during byte reading", e);
                         }
                     }
                 }
-                if (event.getEventType() == SerialPortEvent.HARDWARE_ERROR)
+                else if (event.getEventType() == SerialPortEvent.CTS)
+                {
+                    //ready to start sending
+                    clearToSend.set(event.getNewValue());
+                    setComPortStatus(OperationInProgress);
+                }else if (event.getEventType() == SerialPortEvent.OUTPUT_BUFFER_EMPTY)
+                {
+                    outputBufferEmpty.set(event.getNewValue());
+                    setComPortStatus(Silent);
+                }
+                else if (event.getEventType() == SerialPortEvent.HARDWARE_ERROR)
                 {
                     onConnectError(new SerialPortException("Hardware Error on Port [" + getComPort() + "]"), GeneralException);
                 }
@@ -302,14 +334,6 @@ public class CerialPortConnection
                 {
                     onConnectError(new SerialPortException("Break-Interrupt Error on Port [" + getComPort() + "]"), GeneralException);
                 }
-                else if (event.getEventType() == SerialPortEvent.CTS)
-                {
-                    onConnectError(new SerialPortException("Clear to Send on Port [" + getComPort() + "]"), GeneralException);
-                }
-                else if (event.getEventType() == SerialPortEvent.OUTPUT_BUFFER_EMPTY)
-                {
-                    onConnectError(new SerialPortException("Output has empty buffer error on Port [" + getComPort() + "]"), GeneralException);
-                }
                 else
                 {
                     onConnectError(new SerialPortException("Event failure type not catered for [" + getComPort() + "]/[" + event.getEventType() + "]"), GeneralException);
@@ -319,7 +343,7 @@ public class CerialPortConnection
         catch (TooManyListenersException e)
         {
             onConnectError(new SerialPortException("Listeners already registered on Port [" + getComPort() + "]"), Missing);
-            log.log(Level.WARNING,"A listener is already attached to the com port " + getComPortName(),e);
+            log.log(Level.WARNING, "A listener is already attached to the com port " + getComPortName(), e);
         }
         return this;
     }
@@ -409,8 +433,8 @@ public class CerialPortConnection
                 throw new SerialPortException("Unable to fix message and add end of character - " + message, e);
             }
         }
-        if (!message.endsWith("" + (char)serialPort.getSerialPortInstance()
-                                             .getEndOfInputChar()))
+        if (!message.endsWith("" + (char) serialPort.getSerialPortInstance()
+                                                    .getEndOfInputChar()))
         {
             log.warning("Message being sent on stream without an end character - " + message);
         }

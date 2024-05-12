@@ -26,8 +26,9 @@ public class CerialIdleMonitor implements Runnable
 
     private ComPortStatus previousStatus;
 
-    private static final ThreadFactory factory = Thread.ofVirtual().factory();
-    private static final ScheduledExecutorService scheduledExecutorService =Executors.newScheduledThreadPool(0, factory);
+    private static final ThreadFactory factory = Thread.ofVirtual()
+                                                       .factory();
+    private ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(factory);
 
     public CerialIdleMonitor(CerialPortConnection connection)
     {
@@ -44,12 +45,12 @@ public class CerialIdleMonitor implements Runnable
         this(connection);
         this.initialDelay = initialDelay;
         this.period = period;
-        seconds = (int) TimeUnit.SECONDS.toSeconds(seconds);
+        this.seconds = (int) TimeUnit.SECONDS.toSeconds(seconds);
     }
 
     public void begin()
     {
-        scheduledExecutorService.scheduleAtFixedRate(this, initialDelay, period, TimeUnit.SECONDS);
+        scheduledExecutorService.scheduleWithFixedDelay(this, initialDelay, period, TimeUnit.SECONDS);
         Runtime.getRuntime()
                .addShutdownHook(new Thread(scheduledExecutorService::shutdownNow));
     }
@@ -64,12 +65,18 @@ public class CerialIdleMonitor implements Runnable
         scheduledExecutorService.shutdown();
         try
         {
-            scheduledExecutorService.awaitTermination(20, TimeUnit.SECONDS);
+            boolean success = scheduledExecutorService.awaitTermination(20, TimeUnit.SECONDS);
+            if (!success)
+            {
+                log.warning("Await termination for " + getIdleMonitorName() + " timed out");
+            }
         }
         catch (Exception e)
         {
             scheduledExecutorService.shutdownNow();
         }
+        scheduledExecutorService = null;
+        scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(factory);
     }
 
     public void run()

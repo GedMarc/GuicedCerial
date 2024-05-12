@@ -5,7 +5,6 @@ module guiced.cerial.test {
     requires org.junit.platform.commons;
     requires com.neuronrobotics.nrjavaserial;
     requires org.junit.jupiter.api;
-    requires org.mockito;
 
     requires org.slf4j.simple;
 
