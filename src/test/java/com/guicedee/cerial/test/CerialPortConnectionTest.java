@@ -22,7 +22,7 @@ class CerialPortConnectionTest
     }
 
     @Test
-    void getSerialPort() throws UnsupportedCommOperationException, InterruptedException, IOException
+    void getSerialPort() throws InterruptedException
     {
         CerialPortConnection comPort5 = IGuiceContext.get(Key.get(CerialPortConnection.class, Names.named("18")));
         CerialPortConnection comPort7 = IGuiceContext.get(Key.get(CerialPortConnection.class, Names.named("19")));
@@ -40,7 +40,7 @@ class CerialPortConnectionTest
         assertTrue(connect.getLastMessageTime() != null);
     }
 
-    private static CerialPortConnection getConnection(CerialPortConnection comPort5)
+    private static CerialPortConnection<?> getConnection(CerialPortConnection<?> comPort5)
     {
         comPort5.onComPortStatusUpdate((port, status) -> {
             System.out.println("Port [" + port.getComPort() + "] Status [" + status + "]");
@@ -51,8 +51,9 @@ class CerialPortConnectionTest
         comPort5.setComPortError((exception, connection, status)->{
             System.out.println("Connection error - " + exception + ": " + connection + " / New Status " + status);
         });
-        CerialPortConnection connect = comPort5.connect();
+        CerialPortConnection<?> connect = comPort5.connect();
         comPort5.configureForRTS();
+
         return connect;
     }
 

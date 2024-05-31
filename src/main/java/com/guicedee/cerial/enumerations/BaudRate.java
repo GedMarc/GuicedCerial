@@ -30,10 +30,9 @@ public enum BaudRate
     }
 
     @JsonCreator
-    public static String from(String s)
+    public static BaudRate from(String s)
     {
-        return BaudRate.valueOf("$" + s.toUpperCase())
-                       .toString();
+        return BaudRate.valueOf("$" + s.toUpperCase());
     }
 
 }

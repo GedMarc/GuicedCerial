@@ -11,7 +11,10 @@ import com.guicedee.client.IGuiceContext;
 import com.guicedee.guicedservlets.websockets.options.CallScopeProperties;
 import com.guicedee.guicedservlets.websockets.options.CallScopeSource;
 import gnu.io.*;
-import lombok.*;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.SneakyThrows;
+import lombok.ToString;
 import lombok.extern.java.Log;
 import org.apache.commons.lang3.function.TriConsumer;
 
@@ -29,11 +32,10 @@ import static com.guicedee.cerial.enumerations.ComPortStatus.*;
 import static lombok.AccessLevel.PRIVATE;
 
 @Getter
-@Setter
 @NoArgsConstructor
 @Log
 @ToString(of = {"comPort","comPortStatus"})
-public class CerialPortConnection
+public class CerialPortConnection<J extends CerialPortConnection<J>>
 {
     @JsonIgnore
     private final Object[] readWriteLock = new Object[0];
@@ -60,13 +62,13 @@ public class CerialPortConnection
 
     @JsonIgnore
     @Getter(PRIVATE)
-    private BiConsumer<CerialPortConnection, ComPortStatus> comPortStatusUpdate;
+    private BiConsumer<CerialPortConnection<?>, ComPortStatus> comPortStatusUpdate;
     @JsonIgnore
     @Getter(PRIVATE)
-    private BiConsumer<byte[], CerialPortConnection> comPortRead;
+    private BiConsumer<byte[], CerialPortConnection<?>> comPortRead;
     @JsonIgnore
     @Getter(PRIVATE)
-    private TriConsumer<Throwable, CerialPortConnection, ComPortStatus> comPortError;
+    private TriConsumer<Throwable, CerialPortConnection<?>, ComPortStatus> comPortError;
     @JsonIgnore
     private CerialIdleMonitor monitor;
 
@@ -90,7 +92,7 @@ public class CerialPortConnection
         this(comPort, baudRate, 60 * 10);
     }
 
-    public CerialPortConnection connect()
+    public J connect()
     {
         beforeConnect();
         try
@@ -105,19 +107,20 @@ public class CerialPortConnection
             log.log(Level.SEVERE, "Error connecting to port", e);
             onConnectError(e, ComPortStatus.GeneralException);
         }
-        return this;
+        return (J)this;
     }
 
-    public CerialPortConnection disconnect()
+    public J disconnect()
     {
         if (serialPort.isConnected())
         {
             serialPort.disconnect();
+            setComPortStatus(Offline);
         }
-        return this;
+        return (J)this;
     }
 
-    public CerialPortConnection beforeConnect()
+    public J beforeConnect()
     {
         if (callScoper == null)
         {
@@ -126,18 +129,18 @@ public class CerialPortConnection
                          .injectMembers(this);
         }
         setComPortStatus(Opening);
-        return this;
+        return (J)this;
     }
 
-    public CerialPortConnection afterConnect()
+    public J afterConnect()
     {
         setComPortStatus(Silent);
         configureNotifications();
         getMonitor().begin();
-        return this;
+        return (J)this;
     }
 
-    public CerialPortConnection onConnectError(Throwable e, ComPortStatus status)
+    public J onConnectError(Throwable e, ComPortStatus status)
     {
         if (comPortError != null)
         {
@@ -145,16 +148,16 @@ public class CerialPortConnection
         }
         setComPortStatus(status);
         disconnect();
-        return this;
+        return (J)this;
     }
 
-    public CerialPortConnection onComPortStatusUpdate(BiConsumer<CerialPortConnection, ComPortStatus> comPortStatusUpdate)
+    public J onComPortStatusUpdate(BiConsumer<CerialPortConnection<?>, ComPortStatus> comPortStatusUpdate)
     {
         this.comPortStatusUpdate = comPortStatusUpdate;
-        return this;
+        return (J)this;
     }
 
-    public CerialPortConnection setComPortStatus(ComPortStatus comPortStatus, boolean... update)
+    public J setComPortStatus(ComPortStatus comPortStatus, boolean... update)
     {
         if (this.comPortStatus != comPortStatus && (
                 (update != null && update.length == 0) ||
@@ -164,7 +167,7 @@ public class CerialPortConnection
             this.comPortStatusUpdate.accept(this, comPortStatus);
         }
         this.comPortStatus = comPortStatus;
-        return this;
+        return (J)this;
     }
 
     protected CerialPortConnection registerShutdownHook()
@@ -179,18 +182,18 @@ public class CerialPortConnection
                        afterShutdown();
                    }
                }));
-        return this;
+        return (J)this;
     }
 
     protected CerialPortConnection afterShutdown()
     {
-        return this;
+        return (J)this;
     }
 
     protected CerialPortConnection beforeShutdown()
     {
         getMonitor().end();
-        return this;
+        return (J)this;
     }
 
     protected CerialPortConnection configure(RXTXPort instance) throws UnsupportedCommOperationException
@@ -213,15 +216,15 @@ public class CerialPortConnection
             instance.setInputBufferSize(bufferSize);
             instance.setOutputBufferSize(bufferSize);
         }
-        return this;
+        return (J)this;
     }
 
     private CerialPortConnection me()
     {
-        return this;
+        return (J)this;
     }
 
-    public CerialPortConnection configureForRTS()
+    public J configureForRTS()
     {
         serialPort.getSerialPortInstance()
                   .setRTS(true);
@@ -233,10 +236,10 @@ public class CerialPortConnection
                                               SerialPort.FLOWCONTROL_RTSCTS_OUT);
         serialPort.getSerialPortInstance().setDTR(true);
 
-        return this;
+        return (J)this;
     }
 
-    public CerialPortConnection configureNotifications()
+    public J configureNotifications()
     {
         serialPort.getSerialPortInstance()
                   .notifyOnBreakInterrupt(true);
@@ -345,7 +348,7 @@ public class CerialPortConnection
             onConnectError(new SerialPortException("Listeners already registered on Port [" + getComPort() + "]"), Missing);
             log.log(Level.WARNING, "A listener is already attached to the com port " + getComPortName(), e);
         }
-        return this;
+        return (J)this;
     }
 
     private byte[] checkAndProcessBytes(byte[] bytes) throws UnsupportedCommOperationException
@@ -364,6 +367,10 @@ public class CerialPortConnection
             {
                 CallScopeProperties properties = IGuiceContext.get(CallScopeProperties.class);
                 properties.setSource(CallScopeSource.SerialPort);
+                properties.getProperties()
+                          .put("ComPort", comPort);
+                properties.getProperties()
+                          .put("CerialPortConnection", this);
                 setComPortStatus(Running);
                 comPortRead.accept(Arrays.copyOf(bytes, messageEnd), me());
                 workedOn = true;
@@ -393,11 +400,11 @@ public class CerialPortConnection
         return bytes;
     }
 
-    public CerialPortConnection setEndOfMessageChar(byte b) throws UnsupportedCommOperationException
+    public J setEndOfMessageChar(byte b) throws UnsupportedCommOperationException
     {
         this.serialPort.getSerialPortInstance()
                        .setEndOfInputChar(b);
-        return this;
+        return (J)this;
     }
 
 
@@ -482,5 +489,95 @@ public class CerialPortConnection
         {
             return OS.contains("sunos");
         }
+    }
+
+    public J setComPort(Integer comPort)
+    {
+        this.comPort = comPort;
+        return (J)this;
+    }
+
+    public J setBaudRate(BaudRate baudRate)
+    {
+        this.baudRate = baudRate;
+        return (J)this;
+    }
+
+    public J setComPortStatus(ComPortStatus comPortStatus)
+    {
+        this.comPortStatus = comPortStatus;
+        return (J)this;
+    }
+
+    public J setComPortType(ComPortType comPortType)
+    {
+        this.comPortType = comPortType;
+        return (J)this;
+    }
+
+    public J setDataBits(DataBits dataBits)
+    {
+        this.dataBits = dataBits;
+        return (J)this;
+    }
+
+    public J setFlowControl(FlowControl flowControl)
+    {
+        this.flowControl = flowControl;
+        return (J)this;
+    }
+
+    public J setParity(Parity parity)
+    {
+        this.parity = parity;
+        return (J)this;
+    }
+
+    public J setStopBits(StopBits stopBits)
+    {
+        this.stopBits = stopBits;
+        return (J)this;
+    }
+
+    public J setBufferSize(Integer bufferSize)
+    {
+        this.bufferSize = bufferSize;
+        return (J)this;
+    }
+
+    public J setWriter(OutputStream writer)
+    {
+        this.writer = writer;
+        return (J)this;
+    }
+
+    public J setComPortStatusUpdate(BiConsumer<CerialPortConnection<?>, ComPortStatus> comPortStatusUpdate)
+    {
+        this.comPortStatusUpdate = comPortStatusUpdate;
+        return (J)this;
+    }
+
+    public J setComPortRead(BiConsumer<byte[], CerialPortConnection<?>> comPortRead)
+    {
+        this.comPortRead = comPortRead;
+        return (J)this;
+    }
+
+    public J setComPortError(TriConsumer<Throwable, CerialPortConnection<?>, ComPortStatus> comPortError)
+    {
+        this.comPortError = comPortError;
+        return (J)this;
+    }
+
+    public J setMonitor(CerialIdleMonitor monitor)
+    {
+        this.monitor = monitor;
+        return (J)this;
+    }
+
+    public J setLastMessageTime(LocalDateTime lastMessageTime)
+    {
+        this.lastMessageTime = lastMessageTime;
+        return (J)this;
     }
 }
