@@ -32,7 +32,11 @@ public enum BaudRate
     @JsonCreator
     public static BaudRate from(String s)
     {
-        return BaudRate.valueOf("$" + s.toUpperCase());
+        if (s == null)
+        {
+            return null;
+        }
+        return BaudRate.valueOf((s.startsWith("$") ? "" : "$") + s.toUpperCase());
     }
 
 }

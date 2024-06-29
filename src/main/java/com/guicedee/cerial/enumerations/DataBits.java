@@ -30,6 +30,11 @@ public enum DataBits
     @JsonCreator
     public static DataBits fromString(String s)
     {
-        return DataBits.valueOf("$" + s.toUpperCase());
+        if(s == null)
+        {
+            return null;
+        }
+        return DataBits.valueOf((s.startsWith("$") ? "" : "$") + s.toUpperCase());
     }
+
 }

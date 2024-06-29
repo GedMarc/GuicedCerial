@@ -23,6 +23,10 @@ public enum StopBits
     @JsonCreator
     public static StopBits from(String name)
     {
-        return valueOf("$" + name.toUpperCase());
+        if (name == null)
+        {
+            return null;
+        }
+        return valueOf((name.startsWith("$") ? "" : "$") + name.toUpperCase());
     }
 }

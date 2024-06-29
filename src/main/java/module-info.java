@@ -8,11 +8,13 @@ module com.guicedee.cerial {
     requires com.fasterxml.jackson.annotation;
     requires java.logging;
 
-    requires com.guicedee.client;
+    requires transitive com.guicedee.client;
+    requires transitive com.guicedee.jsonrepresentation;
 
 
     exports com.guicedee.cerial;
-    opens com.guicedee.cerial to com.google.guice;
+    opens com.guicedee.cerial to com.google.guice,com.fasterxml.jackson.databind;
+
     exports com.guicedee.cerial.enumerations;
 
     provides IGuiceModule with CerialPortsBindings;
