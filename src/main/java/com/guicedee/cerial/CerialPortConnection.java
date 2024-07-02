@@ -56,13 +56,13 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
 
     private Integer comPort;
 
-    private BaudRate baudRate;
-    private ComPortStatus comPortStatus;
-    private ComPortType comPortType;
-    private DataBits dataBits;
-    private FlowControl flowControl;
-    private Parity parity;
-    private StopBits stopBits;
+    private BaudRate baudRate = BaudRate.$9600;
+    private ComPortStatus comPortStatus = ComPortStatus.Offline;
+    private ComPortType comPortType = ComPortType.Device;
+    private DataBits dataBits = DataBits.$8;
+    private FlowControl flowControl = FlowControl.None;
+    private Parity parity = Parity.None;
+    private StopBits stopBits = StopBits.$1;
 
     private Integer bufferSize = 4096;
 
@@ -178,6 +178,7 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
     {
         setComPortStatus(Silent);
         configureNotifications();
+        configureForRTS();
         getMonitor().begin();
         return (J)this;
     }
