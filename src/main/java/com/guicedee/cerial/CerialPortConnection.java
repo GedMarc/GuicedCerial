@@ -10,6 +10,7 @@ import com.google.inject.Inject;
 import com.guicedee.cerial.enumerations.*;
 import com.guicedee.client.CallScoper;
 import com.guicedee.client.IGuiceContext;
+import com.guicedee.guicedinjection.interfaces.IGuicePreDestroy;
 import com.guicedee.guicedservlets.websockets.options.CallScopeProperties;
 import com.guicedee.guicedservlets.websockets.options.CallScopeSource;
 import com.guicedee.services.jsonrepresentation.IJsonRepresentation;
@@ -18,34 +19,39 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.ToString;
-import lombok.extern.java.Log;
 import org.apache.commons.lang3.function.TriConsumer;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.OutputStream;
 import java.time.LocalDateTime;
-import java.util.Arrays;
+import java.util.HashSet;
 import java.util.TooManyListenersException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
-import java.util.logging.Level;
 
 import static com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.ANY;
 import static com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.NONE;
 import static com.guicedee.cerial.enumerations.ComPortStatus.*;
 import static lombok.AccessLevel.PRIVATE;
 
+@SuppressWarnings({"UnusedReturnValue",
+        "unchecked",
+        "unused"})
 @Getter
-@Log
-@ToString(of = {"comPort","comPortStatus"})
+@ToString(of = {"comPort",
+        "comPortStatus"})
 @JsonIgnoreProperties(ignoreUnknown = true, value = {"inspection"})
 @JsonAutoDetect(fieldVisibility = ANY, getterVisibility = NONE, setterVisibility = NONE)
 @NoArgsConstructor
-public class CerialPortConnection<J extends CerialPortConnection<J>> implements IJsonRepresentation<J>
+public class CerialPortConnection<J extends CerialPortConnection<J>> implements IJsonRepresentation<J>,
+                                                                                IGuicePreDestroy<J>
 {
     @JsonIgnore
-    private final Object[] readWriteLock = new Object[0];
+    private final Object[] $lock = new Object[0];
+
     @JsonIgnore
     private NRSerialPort<?> serialPort;
 
@@ -91,6 +97,9 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
     @Getter(PRIVATE)
     CallScoper callScoper;
 
+    @JsonIgnore
+    private Logger logger;
+
     public CerialPortConnection(int comPort, BaudRate baudRate, int seconds)
     {
         this.comPort = comPort;
@@ -117,7 +126,7 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
      */
     public NRSerialPort<?> getSerialPort()
     {
-        if(this.serialPort == null)
+        if (this.serialPort == null)
         {
             this.serialPort = new NRSerialPort<>(getComPortName(), baudRate.toInt());
         }
@@ -142,14 +151,14 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
             configure(serialPort.getSerialPortInstance());
             afterConnect();
             registerShutdownHook();
-            log.info("Com Port Connected - " + getComPortName());
+            getLogger().info("Com Port Connected - {}", getComPortName());
         }
         catch (Throwable e)
         {
-            log.log(Level.SEVERE, "Error connecting to port", e);
+            getLogger().fatal("Error connecting to port", e);
             onConnectError(e, ComPortStatus.GeneralException);
         }
-        return (J)this;
+        return (J) this;
     }
 
     public J disconnect()
@@ -159,7 +168,7 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
             serialPort.disconnect();
             setComPortStatus(Offline);
         }
-        return (J)this;
+        return (J) this;
     }
 
     public J beforeConnect()
@@ -171,16 +180,16 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
                          .injectMembers(this);
         }
         setComPortStatus(Opening);
-        return (J)this;
+        return (J) this;
     }
 
     public J afterConnect()
     {
         setComPortStatus(Silent);
         configureNotifications();
-        configureForRTS();
+        //     configureForRTS();
         getMonitor().begin();
-        return (J)this;
+        return (J) this;
     }
 
     public J onConnectError(Throwable e, ComPortStatus status)
@@ -191,13 +200,13 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
         }
         setComPortStatus(status);
         disconnect();
-        return (J)this;
+        return (J) this;
     }
 
     public J onComPortStatusUpdate(BiConsumer<CerialPortConnection<?>, ComPortStatus> comPortStatusUpdate)
     {
         this.comPortStatusUpdate = comPortStatusUpdate;
-        return (J)this;
+        return (J) this;
     }
 
     public J setComPortStatus(ComPortStatus comPortStatus, boolean... update)
@@ -210,36 +219,29 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
             this.comPortStatusUpdate.accept(this, comPortStatus);
         }
         this.comPortStatus = comPortStatus;
-        return (J)this;
+        return (J) this;
     }
 
-    protected CerialPortConnection registerShutdownHook()
+    protected J registerShutdownHook()
     {
-        Runtime.getRuntime()
-               .addShutdownHook(new Thread(() -> {
-                   if (serialPort.isConnected())
-                   {
-                       beforeShutdown();
-                       log.config("Shutting down com port - " + comPort);
-                       serialPort.disconnect();
-                       afterShutdown();
-                   }
-               }));
-        return (J)this;
+        IGuiceContext.getAllLoadedServices()
+                     .getOrDefault(IGuicePreDestroy.class, new HashSet())
+                     .add(this);
+        return (J) this;
     }
 
-    protected CerialPortConnection afterShutdown()
+    protected J afterShutdown()
     {
-        return (J)this;
+        return (J) this;
     }
 
-    protected CerialPortConnection beforeShutdown()
+    protected J beforeShutdown()
     {
         getMonitor().end();
-        return (J)this;
+        return (J) this;
     }
 
-    protected CerialPortConnection configure(RXTXPort instance) throws UnsupportedCommOperationException
+    protected J configure(RXTXPort instance) throws UnsupportedCommOperationException
     {
         setEndOfMessageChar((byte) '\n');
 
@@ -259,43 +261,67 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
             instance.setInputBufferSize(bufferSize);
             instance.setOutputBufferSize(bufferSize);
         }
-        return (J)this;
+        return (J) this;
     }
 
-    private CerialPortConnection me()
+    private J me()
     {
-        return (J)this;
+        return (J) this;
     }
 
+    /**
+     * Must be connected first
+     *
+     * @return
+     */
     public J configureForRTS()
     {
         getSerialPort().getSerialPortInstance()
-                  .setRTS(true);
+                       .setRTS(true);
         getSerialPort().getSerialPortInstance()
-                  .notifyOnCTS(true);
+                       .notifyOnCTS(true);
         getSerialPort().getSerialPortInstance()
-                  .notifyOnOutputEmpty(true);
-        getSerialPort().getSerialPortInstance().setFlowControlMode(SerialPort.FLOWCONTROL_RTSCTS_IN |
-                                              SerialPort.FLOWCONTROL_RTSCTS_OUT);
-        getSerialPort().getSerialPortInstance().setDTR(true);
+                       .notifyOnOutputEmpty(true);
+        getSerialPort().getSerialPortInstance()
+                       .setFlowControlMode(SerialPort.FLOWCONTROL_RTSCTS_IN |
+                                                   SerialPort.FLOWCONTROL_RTSCTS_OUT);
+        getSerialPort().getSerialPortInstance()
+                       .setDTR(true);
 
-        return (J)this;
+        return (J) this;
+    }
+
+    /**
+     * Must be connected first
+     *
+     * @return
+     */
+    public J configureForXOnXOff()
+    {
+    /*    getSerialPort().getSerialPortInstance()
+                       .notifyOnCTS(true);
+        getSerialPort().getSerialPortInstance()
+                       .notifyOnOutputEmpty(true);*/
+        getSerialPort().getSerialPortInstance()
+                       .setFlowControlMode(SerialPort.FLOWCONTROL_XONXOFF_IN |
+                                                   SerialPort.FLOWCONTROL_XONXOFF_OUT);
+        return (J) this;
     }
 
     public J configureNotifications()
     {
         getSerialPort().getSerialPortInstance()
-                  .notifyOnBreakInterrupt(true);
+                       .notifyOnBreakInterrupt(true);
         getSerialPort().getSerialPortInstance()
-                  .notifyOnOverrunError(true);
+                       .notifyOnOverrunError(true);
         getSerialPort().getSerialPortInstance()
-                  .notifyOnParityError(true);
+                       .notifyOnParityError(true);
         getSerialPort().getSerialPortInstance()
-                  .notifyOnFramingError(true);
+                       .notifyOnFramingError(true);
         getSerialPort().getSerialPortInstance()
-                  .notifyOnRingIndicator(true);
+                       .notifyOnRingIndicator(true);
         getSerialPort().getSerialPortInstance()
-                  .notifyOnDataAvailable(true);
+                       .notifyOnDataAvailable(true);
         getSerialPort().notifyOnDataAvailable(true);
         final DataInputStream inputStream = new DataInputStream(getSerialPort().getInputStream());
         writer = new DataOutputStream(getSerialPort().getOutputStream());
@@ -313,11 +339,12 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
                         try
                         {
                             byte[] bytes = new byte[0];
-                            while (!Thread.interrupted())
+                            if (inputStream.available() > 0)
                             {
-                                synchronized (readWriteLock)
+                                synchronized ($lock)
                                 {
-                                    if (inputStream.available() > 0)
+                                    while (!Bytes.contains(bytes, serialPort.getSerialPortInstance()
+                                                                            .getEndOfInputChar()))
                                     {
                                         if (bytes.length == 0)
                                         {
@@ -330,16 +357,16 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
                                             inputStream.readFully(extendedBytes);
                                             bytes = Bytes.concat(bytes, extendedBytes);
                                         }
-                                        if (bytes.length > 0 && !Strings.isNullOrEmpty(new String(bytes)))
-                                        {
-                                            if (Bytes.contains(bytes, serialPort.getSerialPortInstance()
+                                        if (bytes.length > 0 &&
+                                                !Strings.isNullOrEmpty(new String(bytes)) &&
+                                                Bytes.contains(bytes, serialPort.getSerialPortInstance()
                                                                                 .getEndOfInputChar()))
-                                            {
-                                                bytes = checkAndProcessBytes(bytes);
-                                            }
+                                        {
+                                            checkAndProcessBytes(bytes);
+
                                         }
+                                        Thread.sleep(50);
                                     }
-                                    Thread.sleep(50);
                                 }
                             }
                         }
@@ -354,44 +381,60 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
                 {
                     //ready to start sending
                     clearToSend.set(event.getNewValue());
-                    setComPortStatus(OperationInProgress);
-                }else if (event.getEventType() == SerialPortEvent.OUTPUT_BUFFER_EMPTY)
+                    //    setComPortStatus(OperationInProgress);
+                }
+                else if (event.getEventType() == SerialPortEvent.OUTPUT_BUFFER_EMPTY)
                 {
                     outputBufferEmpty.set(event.getNewValue());
-                    setComPortStatus(Silent);
+                    //      setComPortStatus(Silent);
                 }
                 else if (event.getEventType() == SerialPortEvent.HARDWARE_ERROR)
                 {
+                    getLogger().error("COM" + comPort + " Hardware Error- {}", event.getNewValue());
                     onConnectError(new SerialPortException("Hardware Error on Port [" + getComPort() + "]"), GeneralException);
                 }
                 else if (event.getEventType() == SerialPortEvent.FE)
                 {
+                    getLogger().error("COM" + comPort + " Framing Error- {}", event.getNewValue());
                     onConnectError(new SerialPortException("Framing Error on Port [" + getComPort() + "]"), GeneralException);
                 }
                 else if (event.getEventType() == SerialPortEvent.PE)
                 {
+                    getLogger().error("COM" + comPort + " Parity Error- {}", event.getNewValue());
                     onConnectError(new SerialPortException("Parity Error on Port [" + getComPort() + "]"), GeneralException);
                 }
                 else if (event.getEventType() == SerialPortEvent.OE)
                 {
+                    getLogger().error("COM" + comPort + " Overrun Error- {}", event.getNewValue());
                     onConnectError(new SerialPortException("Overrun Error on Port [" + getComPort() + "]"), GeneralException);
                 }
                 else if (event.getEventType() == SerialPortEvent.BI)
                 {
+                    getLogger().error("COM" + comPort + " Break-Interrupt Error- {}", event.getNewValue());
                     onConnectError(new SerialPortException("Break-Interrupt Error on Port [" + getComPort() + "]"), GeneralException);
                 }
                 else
                 {
+                    getLogger().error("COM" + comPort + " Unknown Error- {}", event.getNewValue());
                     onConnectError(new SerialPortException("Event failure type not catered for [" + getComPort() + "]/[" + event.getEventType() + "]"), GeneralException);
                 }
             });
         }
         catch (TooManyListenersException e)
         {
+            getLogger().warn("A listener is already attached to the com port {}", getComPortName(), e);
             onConnectError(new SerialPortException("Listeners already registered on Port [" + getComPort() + "]"), Missing);
-            log.log(Level.WARNING, "A listener is already attached to the com port " + getComPortName(), e);
         }
-        return (J)this;
+        return (J) this;
+    }
+
+    private Logger getLogger()
+    {
+        if (logger == null)
+        {
+            return logger = LogManager.getLogger("COM" + comPort);
+        }
+        return logger;
     }
 
     private byte[] checkAndProcessBytes(byte[] bytes) throws UnsupportedCommOperationException
@@ -415,7 +458,6 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
                 properties.getProperties()
                           .put("CerialPortConnection", this);
                 setComPortStatus(Running);
-                comPortRead.accept(Arrays.copyOf(bytes, messageEnd), me());
                 workedOn = true;
             }
             finally
@@ -426,12 +468,10 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
                 }
                 else
                 {
-                    bytes = Arrays.copyOfRange(bytes, messageEnd, bytes.length);
-                    bytes = new String(bytes).trim()
-                                             .getBytes();
                     if (bytes.length > 0)
                     {
-                        checkAndProcessBytes(bytes);
+                        getLogger().info(new String(bytes));
+                        comPortRead.accept(bytes, me());
                     }
                 }
                 if (workedOn)
@@ -447,7 +487,7 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
     {
         this.serialPort.getSerialPortInstance()
                        .setEndOfInputChar(b);
-        return (J)this;
+        return (J) this;
     }
 
 
@@ -467,47 +507,65 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
     @SneakyThrows
     public void write(String message, boolean... checkForEndOfCharacter)
     {
-        if ((checkForEndOfCharacter != null && checkForEndOfCharacter.length == 0) || (checkForEndOfCharacter != null && checkForEndOfCharacter[0]))
+        synchronized ($lock)
         {
-            try
+            if (getSerialPort() != null && getSerialPort().isConnected())
             {
-                if (!message.endsWith("" + getSerialPort().getSerialPortInstance()
-                                                     .getEndOfInputChar()))
+                if ((checkForEndOfCharacter != null && checkForEndOfCharacter.length == 0) ||
+                        (checkForEndOfCharacter != null && checkForEndOfCharacter[0]))
                 {
-                    message += (char) getSerialPort().getSerialPortInstance()
-                                                .getEndOfInputChar();
-                }
-            }
-            catch (Exception e)
-            {
-                throw new SerialPortException("Unable to fix message and add end of character - " + message, e);
-            }
-        }
-        if (!message.endsWith("" + (char) serialPort.getSerialPortInstance()
-                                                    .getEndOfInputChar()))
-        {
-            log.warning("Message being sent on stream without an end character - " + message);
-        }
-        if (serialPort.isConnected() && !message.trim()
-                                                .isEmpty())
-        {
-            if (writer != null)
-            {
-                try
-                {
-                    synchronized (readWriteLock)
+                    try
                     {
-                        writer.write(message.getBytes());
+                        if (!message.endsWith("" + getSerialPort().getSerialPortInstance()
+                                                                  .getEndOfInputChar()))
+                        {
+                            message += (char) getSerialPort().getSerialPortInstance()
+                                                             .getEndOfInputChar();
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        throw new SerialPortException("Unable to fix message and add end of character - " + message, e);
                     }
                 }
-                catch (Exception e)
+
+                if (!message.endsWith("" + (char) serialPort.getSerialPortInstance()
+                                                            .getEndOfInputChar()))
                 {
-                    throw new SerialPortException("Could not write to serial port " + getComPortName() + " - " + e.getMessage(), e);
+                    getLogger().warn("Message being sent on stream without an end character - {}", message);
                 }
+                if (serialPort.isConnected() && !message.trim()
+                                                        .isEmpty())
+                {
+                    if (writer != null)
+                    {
+                        try
+                        {
+                            getLogger().info(message.trim());
+                            writer.write(message.getBytes());
+                        }
+                        catch (Exception e)
+                        {
+                            throw new SerialPortException("Could not write to serial port " + getComPortName() + " - " + e.getMessage(), e);
+                        }
+                    }
+                }
+            }else {
+                getLogger().warn("Com Port not ready for write - COM{} - {}", comPort, message);
             }
         }
     }
 
+    @Override
+    public void onDestroy()
+    {
+        if (serialPort != null && serialPort.isConnected())
+        {
+            serialPort.disconnect();
+        }
+    }
+
+    @SuppressWarnings("unused")
     private static class OSValidator
     {
         private static final String OS = System.getProperty("os.name")
@@ -537,94 +595,94 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
     public J setComPort(Integer comPort)
     {
         this.comPort = comPort;
-        return (J)this;
+        return (J) this;
     }
 
     public J setBaudRate(BaudRate baudRate)
     {
         this.baudRate = baudRate;
-        return (J)this;
+        return (J) this;
     }
 
     public J setComPortStatus(ComPortStatus comPortStatus)
     {
         if (this.comPortStatus != comPortStatus && this.comPortStatusUpdate != null)
         {
-            this.comPortStatusUpdate.accept(this,comPortStatus);
+            this.comPortStatusUpdate.accept(this, comPortStatus);
         }
         this.comPortStatus = comPortStatus;
-        return (J)this;
+        return (J) this;
     }
 
     public J setComPortType(ComPortType comPortType)
     {
         this.comPortType = comPortType;
-        return (J)this;
+        return (J) this;
     }
 
     public J setDataBits(DataBits dataBits)
     {
         this.dataBits = dataBits;
-        return (J)this;
+        return (J) this;
     }
 
     public J setFlowControl(FlowControl flowControl)
     {
         this.flowControl = flowControl;
-        return (J)this;
+        return (J) this;
     }
 
     public J setParity(Parity parity)
     {
         this.parity = parity;
-        return (J)this;
+        return (J) this;
     }
 
     public J setStopBits(StopBits stopBits)
     {
         this.stopBits = stopBits;
-        return (J)this;
+        return (J) this;
     }
 
     public J setBufferSize(Integer bufferSize)
     {
         this.bufferSize = bufferSize;
-        return (J)this;
+        return (J) this;
     }
 
     public J setWriter(OutputStream writer)
     {
         this.writer = writer;
-        return (J)this;
+        return (J) this;
     }
 
     public J setComPortStatusUpdate(BiConsumer<CerialPortConnection<?>, ComPortStatus> comPortStatusUpdate)
     {
         this.comPortStatusUpdate = comPortStatusUpdate;
-        return (J)this;
+        return (J) this;
     }
 
     public J setComPortRead(BiConsumer<byte[], CerialPortConnection<?>> comPortRead)
     {
         this.comPortRead = comPortRead;
-        return (J)this;
+        return (J) this;
     }
 
     public J setComPortError(TriConsumer<Throwable, CerialPortConnection<?>, ComPortStatus> comPortError)
     {
         this.comPortError = comPortError;
-        return (J)this;
+        return (J) this;
     }
 
     public J setMonitor(CerialIdleMonitor monitor)
     {
         this.monitor = monitor;
-        return (J)this;
+        return (J) this;
     }
 
     public J setLastMessageTime(LocalDateTime lastMessageTime)
     {
         this.lastMessageTime = lastMessageTime;
-        return (J)this;
+        return (J) this;
     }
 }

@@ -1,5 +1,7 @@
+import com.guicedee.cerial.implementations.CerialPortLogConfigurations;
 import com.guicedee.cerial.implementations.CerialPortsBindings;
 import com.guicedee.guicedinjection.interfaces.IGuiceModule;
+import com.guicedee.guicedinjection.interfaces.Log4JConfigurator;
 
 module com.guicedee.cerial {
     requires transitive com.neuronrobotics.nrjavaserial;
@@ -8,8 +10,12 @@ module com.guicedee.cerial {
     requires com.fasterxml.jackson.annotation;
     requires java.logging;
 
+    requires org.apache.logging.log4j;
+
     requires transitive com.guicedee.client;
     requires transitive com.guicedee.jsonrepresentation;
+    requires org.apache.logging.log4j.core;
+    requires org.apache.commons.io;
 
 
     exports com.guicedee.cerial;
@@ -18,5 +24,6 @@ module com.guicedee.cerial {
     exports com.guicedee.cerial.enumerations;
 
     provides IGuiceModule with CerialPortsBindings;
+    provides Log4JConfigurator with CerialPortLogConfigurations;
 
 }
