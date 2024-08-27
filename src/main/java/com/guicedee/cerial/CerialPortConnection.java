@@ -213,10 +213,13 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
     {
         if (this.comPortStatus != comPortStatus && (
                 (update != null && update.length == 0) ||
-                        (update != null && !update[0]))
+                        (update != null && update[0]))
         )
         {
-            this.comPortStatusUpdate.accept(this, comPortStatus);
+            if (this.comPortStatusUpdate != null)
+            {
+                this.comPortStatusUpdate.accept(this, comPortStatus);
+            }
         }
         this.comPortStatus = comPortStatus;
         return (J) this;
@@ -550,7 +553,9 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
                         }
                     }
                 }
-            }else {
+            }
+            else
+            {
                 getLogger().warn("Com Port not ready for write - COM{} - {}", comPort, message);
             }
         }
