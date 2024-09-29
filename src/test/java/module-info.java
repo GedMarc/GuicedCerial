@@ -3,8 +3,9 @@ module guiced.cerial.test {
     requires com.guicedee.guicedinjection;
 
     requires org.junit.platform.commons;
-    requires com.neuronrobotics.nrjavaserial;
+    //requires com.neuronrobotics.nrjavaserial;
     requires org.junit.jupiter.api;
+    requires com.fazecast.jSerialComm;
 
     //requires org.slf4j.simple;
 

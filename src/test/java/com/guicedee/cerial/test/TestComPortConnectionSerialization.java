@@ -22,7 +22,7 @@ public class TestComPortConnectionSerialization
         cpc.setComPortType(ComPortType.Device);
 
         cpc.connect();
-        cpc.configureForRTS();
+        //cpc.configureForRTS();
        // cpc.configureNotifications();
 
         String json = cpc.toJson();
