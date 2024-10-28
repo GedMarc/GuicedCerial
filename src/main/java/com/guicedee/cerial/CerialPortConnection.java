@@ -23,6 +23,7 @@ import org.apache.logging.log4j.Logger;
 
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.text.NumberFormat;
 import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -45,6 +46,14 @@ import static lombok.AccessLevel.PRIVATE;
 @Log
 public class CerialPortConnection<J extends CerialPortConnection<J>> implements IJsonRepresentation<J>,
         IGuicePreDestroy<J> {
+
+    public static NumberFormat portNumberFormat = NumberFormat.getNumberInstance();
+    static {
+        portNumberFormat.setMinimumIntegerDigits(3);
+        portNumberFormat.setMinimumFractionDigits(0);
+        portNumberFormat.setMaximumFractionDigits(0);
+        portNumberFormat.setMaximumIntegerDigits(3);
+    }
 
     //@JsonIgnore
     //private NRSerialPort<?> serialPort;
@@ -158,10 +167,14 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
 
             //serialPort.connect();
             // configure(serialPort.getSerialPortInstance());
-            afterConnect();
-            registerShutdownHook();
-            setComPortStatus(Idle);
-            getLogger().info("Com Port Connected - {}", getComPortName());
+            if(connectionPort.isOpen()) {
+                afterConnect();
+                registerShutdownHook();
+                setComPortStatus(Idle);
+                getLogger().info("Com Port Connected - {}", getComPortName());
+            }else {
+                setComPortStatus(Missing);
+            }
         } catch (Throwable e) {
             getLogger().fatal("Error connecting to port", e);
             onConnectError(e, ComPortStatus.GeneralException);
@@ -187,7 +200,7 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
                     .inject()
                     .injectMembers(this);
         }
-        setComPortStatus(Opening);
+        //setComPortStatus(Opening);
         configure(connectionPort);
         //   connectionPort.addDataListener(disconnectListener);
         return (J) this;
@@ -210,8 +223,9 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
     public J onConnectError(Throwable e, ComPortStatus status) {
         if (comPortError != null) {
             comPortError.accept(e, this, status);
+        }else {
+            setComPortStatus(status);
         }
-        setComPortStatus(status);
         disconnect();
         monitor.end();
         return (J) this;
@@ -459,6 +473,7 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
                 {
                     message+=endOfMessage;
                 }
+                System.out.print("[" + portNumberFormat.format(comPort) + "] TX - " + message);
                 connectionPort.writeBytes(message.getBytes(StandardCharsets.UTF_8), message.length());
             }
             //getLogger().warn("TX : {}", message);

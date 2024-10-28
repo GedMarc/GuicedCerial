@@ -18,6 +18,7 @@ import java.util.function.BiConsumer;
 import java.util.logging.Level;
 
 import static com.fazecast.jSerialComm.SerialPort.LISTENING_EVENT_DATA_RECEIVED;
+import static com.guicedee.cerial.CerialPortConnection.portNumberFormat;
 import static com.guicedee.cerial.enumerations.ComPortStatus.Running;
 import static lombok.AccessLevel.PRIVATE;
 
@@ -79,6 +80,7 @@ public class DataSerialPortMessageListener implements SerialPortMessageListener 
                     .put("CerialPortConnection", this);
             getConnection().setComPortStatus(Running);
            // log.warning(MessageFormat.format("RX : {0}", new String(newData)));
+            System.out.print("[" + portNumberFormat.format(connection.getComPort()) + "] RX - " + new String(newData));
             if (comPortRead != null) {
                 comPortRead.accept(newData, comPort);
             }
