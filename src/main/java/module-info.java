@@ -1,4 +1,3 @@
-import com.guicedee.cerial.implementations.CerialPortLogConfigurations;
 import com.guicedee.cerial.implementations.CerialPortsBindings;
 import com.guicedee.guicedinjection.interfaces.IGuiceModule;
 import com.guicedee.guicedinjection.interfaces.Log4JConfigurator;
@@ -25,6 +24,5 @@ module com.guicedee.cerial {
     exports com.guicedee.cerial.enumerations;
 
     provides IGuiceModule with CerialPortsBindings;
-    provides Log4JConfigurator with CerialPortLogConfigurations;
 
 }
