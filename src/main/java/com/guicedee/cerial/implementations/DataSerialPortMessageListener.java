@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fazecast.jSerialComm.SerialPort;
 import com.fazecast.jSerialComm.SerialPortEvent;
 import com.fazecast.jSerialComm.SerialPortMessageListener;
+import com.google.common.base.Strings;
 import com.guicedee.cerial.CerialPortConnection;
 import com.guicedee.client.CallScoper;
 import com.guicedee.client.IGuiceContext;
@@ -13,7 +14,12 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.java.Log;
 
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.text.MessageFormat;
+import java.util.Arrays;
 import java.util.function.BiConsumer;
 import java.util.logging.Level;
 
@@ -25,7 +31,8 @@ import static lombok.AccessLevel.PRIVATE;
 @Getter
 @Setter
 @Log
-public class DataSerialPortMessageListener implements SerialPortMessageListener {
+public class DataSerialPortMessageListener implements SerialPortMessageListener
+{
 
     @JsonIgnore
     @Getter(PRIVATE)
@@ -38,40 +45,50 @@ public class DataSerialPortMessageListener implements SerialPortMessageListener 
     private CerialPortConnection<?> connection;
     @JsonIgnore
     @Getter(PRIVATE)
-    private char delimiter;
+    private char[] delimiter;
 
-    public DataSerialPortMessageListener(char delimiter, SerialPort comPort, CerialPortConnection<?> connection) {
+    public DataSerialPortMessageListener(char[] delimiter, SerialPort comPort, CerialPortConnection<?> connection)
+    {
         this.delimiter = delimiter;
         this.comPort = comPort;
         this.connection = connection;
     }
 
     @Override
-    public byte[] getMessageDelimiter() {
-        return new byte[]{(byte) delimiter};
+    public byte[] getMessageDelimiter()
+    {
+        return new String(delimiter).getBytes(StandardCharsets.UTF_8);
     }
 
     @Override
-    public boolean delimiterIndicatesEndOfMessage() {
+    public boolean delimiterIndicatesEndOfMessage()
+    {
         return true;
     }
 
     @Override
-    public int getListeningEvents() {
+    public int getListeningEvents()
+    {
         return LISTENING_EVENT_DATA_RECEIVED;
     }
 
     @Override
-    public void serialEvent(SerialPortEvent event) {
-        if (event.getEventType() != LISTENING_EVENT_DATA_RECEIVED) {
+    public void serialEvent(SerialPortEvent event)
+    {
+        if (event.getEventType() != LISTENING_EVENT_DATA_RECEIVED)
+        {
             return;
         }
-        byte[] newData =  event.getReceivedData();
-     //   int numRead = comPort.readBytes(newData, newData.length);
-     //   System.out.println("Read " + newData.length + " bytes.");
+        byte[] newData = event.getReceivedData();
+        if(Strings.isNullOrEmpty(new String(newData).trim()))
+            return;
+
+        //   int numRead = comPort.readBytes(newData, newData.length);
+        //   System.out.println("Read " + newData.length + " bytes.");
         var callScoper = IGuiceContext.get(CallScoper.class);
         callScoper.enter();
-        try {
+        try
+        {
             CallScopeProperties properties = IGuiceContext.get(CallScopeProperties.class);
             properties.setSource(CallScopeSource.SerialPort);
             properties.getProperties()
@@ -79,16 +96,17 @@ public class DataSerialPortMessageListener implements SerialPortMessageListener 
             properties.getProperties()
                     .put("CerialPortConnection", this);
             getConnection().setComPortStatus(Running);
-           // log.warning(MessageFormat.format("RX : {0}", new String(newData)));
+            // log.warning(MessageFormat.format("RX : {0}", new String(newData)));
             System.out.print("[" + portNumberFormat.format(connection.getComPort()) + "] RX - " + new String(newData));
-            if (comPortRead != null) {
+            if (comPortRead != null)
+            {
                 comPortRead.accept(newData, comPort);
             }
-        }catch (Throwable T)
+        } catch (Throwable T)
         {
-            log.log(Level.SEVERE,"Error on ComPort [" + connection.getComPort() + "] Receipt",T);
-        }
-        finally {
+            log.log(Level.SEVERE, "Error on ComPort [" + connection.getComPort() + "] Receipt", T);
+        } finally
+        {
             callScoper.exit();
         }
     }
