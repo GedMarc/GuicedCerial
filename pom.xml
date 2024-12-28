@@ -28,7 +28,7 @@
     <dependencies>
         <dependency>
             <groupId>com.guicedee.services</groupId>
-            <artifactId>jSerialComm</artifactId>
+            <artifactId>jserialcomm</artifactId>
         </dependency>
 
         <dependency>
