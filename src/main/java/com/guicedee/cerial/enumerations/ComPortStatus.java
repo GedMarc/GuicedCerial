@@ -26,9 +26,10 @@ public enum ComPortStatus
 	
 	private String foregroundClass;
 	
-	public static final EnumSet<ComPortStatus> pauseOperations = EnumSet.of(GeneralException,Missing,InUse,Offline,OperationInProgress,FileTransfer,Opening) ;
+	public static final EnumSet<ComPortStatus> exceptionOperations = EnumSet.of(GeneralException,Missing,InUse,Offline) ;
+	public static final EnumSet<ComPortStatus> pauseOperations = EnumSet.of(OperationInProgress,FileTransfer,Opening) ;
 	public static final EnumSet<ComPortStatus> portActive = EnumSet.of(Silent,Idle,Logging,Running,Simulation);
-	public static final EnumSet<ComPortStatus> portOffline = EnumSet.of(GeneralException,Missing,InUse,Offline);
+	public static final EnumSet<ComPortStatus> portOffline = EnumSet.of(Offline);
 
 	public static final EnumSet<ComPortStatus> onlineServerStatus = EnumSet.of(Simulation, Idle, Opening, Logging, OperationInProgress, Running, Silent, FileTransfer);
 

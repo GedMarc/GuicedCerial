@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fazecast.jSerialComm.SerialPort;
+import com.fazecast.jSerialComm.SerialPortDataListener;
 import com.google.inject.Inject;
 import com.guicedee.cerial.enumerations.*;
 import com.guicedee.cerial.implementations.*;
@@ -36,6 +37,7 @@ import static lombok.AccessLevel.PRIVATE;
         "unchecked",
         "unused"})
 @Getter
+@Setter
 @ToString(of = {"comPort",
         "comPortStatus"})
 @JsonIgnoreProperties(ignoreUnknown = true, value = {"inspection"})
@@ -61,6 +63,12 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
     @JsonIgnore
     private com.fazecast.jSerialComm.SerialPort connectionPort;
 
+    public J setConnectionPort(SerialPort connectionPort)
+    {
+        this.connectionPort = connectionPort;
+        return (J)this;
+    }
+
     @JsonIgnore
     private final AtomicBoolean outputBufferEmpty = new AtomicBoolean(false);
     @JsonIgnore
@@ -78,20 +86,19 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
 
     private Integer bufferSize = 4096;
 
+
     private Integer idleTimerSeconds = 5;
 
-    @Getter(PRIVATE)
+    
     @JsonIgnore
     private OutputStream writer = null;
 
     @JsonIgnore
-    @Getter(PRIVATE)
+    
     private BiConsumer<CerialPortConnection<?>, ComPortStatus> comPortStatusUpdate;
-    /*@JsonIgnore
-    @Getter(PRIVATE)
-    private BiConsumer<byte[], CerialPortConnection<?>> comPortRead;*/
+
     @JsonIgnore
-    @Getter(PRIVATE)
+    
     private TriConsumer<Throwable, CerialPortConnection<?>, ComPortStatus> comPortError;
     @JsonIgnore
     private CerialIdleMonitor monitor;
@@ -104,7 +111,6 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
 
     @Inject
     @JsonIgnore
-    @Getter(PRIVATE)
     CallScoper callScoper;
 
     @JsonIgnore
@@ -113,9 +119,7 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
 
     private boolean run = false;
     @JsonIgnore
-    private DataSerialPortMessageListener serialPortMessageListener;
-    @JsonIgnore
-    private DataSerialPortDisconnectListener disconnectListener;
+    private SerialPortDataListener serialPortMessageListener;
 
     public CerialPortConnection(int comPort, BaudRate baudRate, int seconds)
     {
@@ -130,7 +134,6 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
 
         connectionPort = com.fazecast.jSerialComm.SerialPort.getCommPort(getComPortName());
         serialPortMessageListener = new DataSerialPortMessageListener(endOfMessage, connectionPort, this);
-        disconnectListener = new DataSerialPortDisconnectListener(connectionPort, this);
         connectionPort.setBaudRate(baudRate.toInt());
         this.idleTimerSeconds = seconds;
         this.setMonitor(new CerialIdleMonitor(this, 2, 1, seconds));
@@ -201,12 +204,6 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
         setComPortStatus(Silent);
         connectionPort.removeDataListener();
         connectionPort.addDataListener(serialPortMessageListener);
-        connectionPort.addDataListener(disconnectListener);
-        connectionPort.addDataListener(new DataSerialPortErrorSoftwareOverrunListener(connectionPort, this));
-        connectionPort.addDataListener(new DataSerialPortErrorBreakInterruptListener(connectionPort, this));
-        connectionPort.addDataListener(new DataSerialPortErrorFirmwareOverrunListener(connectionPort, this));
-        connectionPort.addDataListener(new DataSerialPortErrorFramingListener(connectionPort, this));
-        connectionPort.addDataListener(new DataSerialPortErrorParityListener(connectionPort, this));
         getMonitor().begin();
         return (J) this;
     }
@@ -432,7 +429,7 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
             logger.warn("Port not yet ready");
             return (J) this;
         }
-        this.serialPortMessageListener.setComPortRead(comPortRead);
+        ((ComPortEvents)serialPortMessageListener).setComPortRead(comPortRead);
         return (J) this;
     }
 

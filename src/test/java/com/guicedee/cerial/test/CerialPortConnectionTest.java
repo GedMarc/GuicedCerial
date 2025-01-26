@@ -30,10 +30,10 @@ class CerialPortConnectionTest {
 
     @Test
     void getSerialPort() throws InterruptedException {
-        CerialPortConnection comPort5 = IGuiceContext.get(Key.get(CerialPortConnection.class, Names.named("8")));
-        CerialPortConnection comPort7 = IGuiceContext.get(Key.get(CerialPortConnection.class, Names.named("18")));
+        CerialPortConnection comPort5 = IGuiceContext.get(Key.get(CerialPortConnection.class, Names.named("98")));
+        CerialPortConnection comPort7 = IGuiceContext.get(Key.get(CerialPortConnection.class, Names.named("99")));
         //CerialPortConnection comPort9 = IGuiceContext.get(Key.get(CerialPortConnection.class, Names.named("9")));
-        assertEquals(comPort5, IGuiceContext.get(Key.get(CerialPortConnection.class, Names.named("8"))), "Singleton for serial port provider was not applied");
+        assertEquals(comPort5, IGuiceContext.get(Key.get(CerialPortConnection.class, Names.named("98"))), "Singleton for serial port provider was not applied");
         //CerialPortConnection comPort5 = new CerialPortConnection(5, BaudRate.$9600,10);
         //CerialPortConnection connect = getConnection(comPort5);
         //CerialPortConnection connect7 = getConnection(comPort7);

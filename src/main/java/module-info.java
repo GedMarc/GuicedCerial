@@ -21,6 +21,7 @@ module com.guicedee.cerial {
     opens com.guicedee.cerial to com.google.guice,com.fasterxml.jackson.databind;
 
     exports com.guicedee.cerial.enumerations;
+    exports com.guicedee.cerial.implementations;
 
     provides IGuiceModule with CerialPortsBindings;
 

@@ -81,18 +81,7 @@ public class CerialIdleMonitor implements Runnable
 
     public void run()
     {
-        if (connection.getComPortStatus() == Idle)
-        {
-            return;
-        }
-        if (connection.getLastMessageTime() == null)
-        {
-            if (!onlineServerStatus.contains(connection.getComPortStatus()))
-            {
-                connection.setComPortStatus(Offline);
-            }
-        }
-        else if (
+        if(!exceptionOperations.contains(connection.getComPortStatus()) &&
                 (connection.getComPortStatus() != Silent &&
                         ComPortStatus.onlineServerStatus.contains(connection.getComPortStatus())) &&
                         (connection.getLastMessageTime()
