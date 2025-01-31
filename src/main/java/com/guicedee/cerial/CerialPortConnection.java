@@ -66,7 +66,7 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
     public J setConnectionPort(SerialPort connectionPort)
     {
         this.connectionPort = connectionPort;
-        return (J)this;
+        return (J) this;
     }
 
     @JsonIgnore
@@ -83,22 +83,23 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
     private FlowControl flowControl = FlowControl.None;
     private Parity parity = Parity.None;
     private StopBits stopBits = StopBits.$1;
+    private FlowType flow = FlowType.None;
 
-    private Integer bufferSize = 4096;
+    private Integer bufferSize = 1024;
 
 
     private Integer idleTimerSeconds = 5;
 
-    
+
     @JsonIgnore
     private OutputStream writer = null;
 
     @JsonIgnore
-    
+
     private BiConsumer<CerialPortConnection<?>, ComPortStatus> comPortStatusUpdate;
 
     @JsonIgnore
-    
+
     private TriConsumer<Throwable, CerialPortConnection<?>, ComPortStatus> comPortError;
     @JsonIgnore
     private CerialIdleMonitor monitor;
@@ -107,7 +108,7 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
 
     @Setter
     @Getter
-    private char[] endOfMessage = new char[]{'\r','\n',(byte)0x03};
+    private char[] endOfMessage = new char[]{'\r', '\n', (byte) 0x03};
 
     @Inject
     @JsonIgnore
@@ -116,6 +117,19 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
     @JsonIgnore
     private Logger logger;
 
+    public J reset()
+    {
+        baudRate = BaudRate.$9600;
+        comPortStatus = ComPortStatus.Offline;
+        dataBits = DataBits.$8;
+        flowControl = FlowControl.None;
+        parity = Parity.None;
+        stopBits = StopBits.$1;
+        flow = FlowType.None;
+        Integer bufferSize = 1024;
+        Integer idleTimerSeconds = 5;
+        return (J) this;
+    }
 
     private boolean run = false;
     @JsonIgnore
@@ -125,11 +139,7 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
     {
         this.comPort = comPort;
         this.baudRate = baudRate;
-        setDataBits(DataBits.$8);
-        setParity(Parity.None);
-        setStopBits(StopBits.$1);
-        setFlowControl(FlowControl.None);
-        setComPortStatus(ComPortStatus.Offline);
+        reset();
         setComPortType(ComPortType.Device);
 
         connectionPort = com.fazecast.jSerialComm.SerialPort.getCommPort(getComPortName());
@@ -137,6 +147,8 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
         connectionPort.setBaudRate(baudRate.toInt());
         this.idleTimerSeconds = seconds;
         this.setMonitor(new CerialIdleMonitor(this, 2, 1, seconds));
+
+        IGuiceContext.getAllLoadedServices().get(IGuicePreDestroy.class).add(this);
     }
 
     public CerialPortConnection(int comPort, BaudRate baudRate)
@@ -204,9 +216,42 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
         setComPortStatus(Silent);
         connectionPort.removeDataListener();
         connectionPort.addDataListener(serialPortMessageListener);
+        if (flow != null && flow != FlowType.None)
+        {
+            switch (flow)
+            {
+                case XONXOFF:
+                    setXOnXOff();
+                    break;
+                case RTSCTS:
+                    setRts();
+                    break;
+            }
+        }
+
         getMonitor().begin();
         return (J) this;
     }
+
+    public J setXOnXOff()
+    {
+        connectionPort.setFlowControl(SerialPort.FLOW_CONTROL_XONXOFF_IN_ENABLED | SerialPort.FLOW_CONTROL_XONXOFF_OUT_ENABLED);
+        return (J) this;
+    }
+
+    public J setRts()
+    {
+        connectionPort.setFlowControl(SerialPort.FLOW_CONTROL_RTS_ENABLED | SerialPort.FLOW_CONTROL_CTS_ENABLED);
+        return (J) this;
+    }
+
+
+    public J setDsr()
+    {
+        connectionPort.setFlowControl(SerialPort.FLOW_CONTROL_DSR_ENABLED | SerialPort.FLOW_CONTROL_DTR_ENABLED);
+        return (J) this;
+    }
+
 
     public J onConnectError(Throwable e, ComPortStatus status)
     {
@@ -247,8 +292,7 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
 
     protected J registerShutdownHook()
     {
-        IGuiceContext.getAllLoadedServices()
-                .getOrDefault(IGuicePreDestroy.class, new HashSet())
+        IGuiceContext.instance().loadPreDestroyServices()
                 .add(this);
         return (J) this;
     }
@@ -318,10 +362,11 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
     @Override
     public void onDestroy()
     {
-        if (connectionPort.isOpen())
-        {
-            connectionPort.closePort();
-        }
+        if (connectionPort != null)
+            if (connectionPort.isOpen())
+            {
+                disconnect();
+            }
     }
 
     @SuppressWarnings("unused")
@@ -429,7 +474,7 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
             logger.warn("Port not yet ready");
             return (J) this;
         }
-        ((ComPortEvents)serialPortMessageListener).setComPortRead(comPortRead);
+        ((ComPortEvents) serialPortMessageListener).setComPortRead(comPortRead);
         return (J) this;
     }
 

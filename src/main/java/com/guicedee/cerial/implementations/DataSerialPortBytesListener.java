@@ -13,11 +13,15 @@ import com.guicedee.guicedservlets.websockets.options.CallScopeSource;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.java.Log;
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.ArrayUtils;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -55,6 +59,8 @@ public class DataSerialPortBytesListener implements SerialPortDataListenerWithEx
     private Mode mode = Mode.Delimeter;
 
     private int maxBufferLength = 1024;
+
+    private Set<Character> allowedChars = new java.util.HashSet<>();
 
     public enum Mode
     {
@@ -123,8 +129,20 @@ public class DataSerialPortBytesListener implements SerialPortDataListenerWithEx
     public void processReceivedBytes(byte[] newData)
     {
         newData = remove(newData, (byte) 0);
-
         String message = "";
+
+        Set<Character> delChars = new java.util.HashSet<>();
+        for (char c : delimiter)
+        {
+            delChars.add(c);
+        }
+        try
+        {
+            FileUtils.writeByteArrayToFile(new File("cerial/COM" + connection.getComPort() + "TRACE" + ".log"), newData, true);
+        } catch (IOException e)
+        {
+            log.warning("Couldn't log down raw bytes from com port - " + connection.getComPort());
+        }
 
         for (byte b : newData)
         {
@@ -132,42 +150,72 @@ public class DataSerialPortBytesListener implements SerialPortDataListenerWithEx
             {
                 continue;
             }
-
+            Character c = (char) b;
+            if ( (!allowedChars.isEmpty() && !allowedChars.contains((char) b)) && (delimiter.length > 0 && !delChars.contains(c)))
+            {
+                log.warning("Character not allowed on serial port - " + getComPort().getDescriptivePortName() + " - [" + (char)b + "]. Reset Buffer" );
+                buffer = new StringBuilder();
+                continue;
+            }
             boolean appended = false;
             if ((mode == Mode.All || mode == Mode.Pattern) && patternMatch != null)
             {
-                buffer.append(String.valueOf((char)b).trim());
+                if (buffer.length() >= maxBufferLength)
+                {
+                    System.out.println("Buffer reached on serial port - " + getComPort().getDescriptivePortName());
+                    buffer.deleteCharAt(0);
+                }
+                buffer.append(String.valueOf((char) b).trim());
                 appended = true;
 
                 Matcher matcher = patternMatch.matcher(buffer.toString());
                 while (matcher.find())
                 {
                     message = matcher.group();
-                    processMessage(message.getBytes());
+                    try
+                    {
+                        processMessage(message.getBytes());
+                    } catch (Throwable e)
+                    {
+                        log.log(Level.SEVERE, e.getMessage(), e);
+                    }
                     buffer = new StringBuilder(buffer.substring(matcher.end()));
                 }
             }
             if (mode == Mode.All || mode == Mode.Delimeter)
             {
                 boolean found = false;
-                for (char c : delimiter)
+                for (char delimiterCheck : delimiter)
                 {
-                    if(c != b)
+                    if (delimiterCheck != b)
                     {
                         found = false;
-                    }
-                    else
+                    } else
                     {
                         found = true;
-                        message = buffer.toString();
-                        processMessage(message.getBytes());
-                        buffer = new StringBuilder();
                     }
                 }
                 if (!found && !appended)
                 {
-                    buffer.append((char)b);
+                    if (buffer.length() >= maxBufferLength)
+                    {
+                        System.out.println("Buffer reached on serial port - " + getComPort().getDescriptivePortName());
+                        buffer.deleteCharAt(0);
+                    }
+                    buffer.append((char) b);
                     appended = true;
+                }
+                if (found)
+                {
+                    message = buffer.toString();
+                    try
+                    {
+                        processMessage(message.getBytes());
+                    } catch (Throwable e)
+                    {
+                        log.log(Level.SEVERE, e.getMessage(), e);
+                    }
+                    buffer = new StringBuilder();
                 }
             }
 
@@ -176,8 +224,23 @@ public class DataSerialPortBytesListener implements SerialPortDataListenerWithEx
 
     private void processMessage(byte[] newData)
     {
+        synchronized (this)
+        {
+            try
+            {
+                if(!(new String(newData).endsWith("\n")))
+                {
+                    newData = ArrayUtils.add(newData, (byte)'\n');
+                }
+                FileUtils.writeByteArrayToFile(new File("cerial/COM" + connection.getComPort() + ".log"), newData, true);
+            } catch (IOException e)
+            {
+                log.warning("Couldn't log down raw bytes from com port - " + connection.getComPort());
+            }
+        }
         try
         {
+            byte[] finalNewData = newData;
             CompletableFuture.supplyAsync(() -> {
                 var callScoper = IGuiceContext.get(CallScoper.class);
                 callScoper.enter();
@@ -191,10 +254,11 @@ public class DataSerialPortBytesListener implements SerialPortDataListenerWithEx
                             .put("CerialPortConnection", this);
                     getConnection().setComPortStatus(Running);
                     // log.warning(MessageFormat.format("RX : {0}", new String(newData)));
-                    System.out.print("[" + portNumberFormat.format(connection.getComPort()) + "] RX - " + new String(newData));
+                    System.out.println("[" + portNumberFormat.format(connection.getComPort()) + "] RX - " + new String(finalNewData));
+
                     if (comPortRead != null)
                     {
-                        comPortRead.accept(newData, comPort);
+                        comPortRead.accept(finalNewData, comPort);
                     }
                 } catch (Throwable T)
                 {
@@ -204,7 +268,7 @@ public class DataSerialPortBytesListener implements SerialPortDataListenerWithEx
                     callScoper.exit();
                 }
                 return true;
-            }).get(2, TimeUnit.SECONDS);
+            }).get(10, TimeUnit.SECONDS);
         } catch (Exception e)
         {
             log.log(Level.SEVERE, "Error on running bytes serial ComPort [" + connection.getComPort() + "] Receipt", e);

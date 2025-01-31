@@ -65,10 +65,11 @@ public class CerialIdleMonitor implements Runnable
         scheduledExecutorService.shutdown();
         try
         {
-            boolean success = scheduledExecutorService.awaitTermination(20, TimeUnit.SECONDS);
+            boolean success = scheduledExecutorService.awaitTermination(5, TimeUnit.SECONDS);
             if (!success)
             {
                 log.warning("Await termination for " + getIdleMonitorName() + " timed out");
+                scheduledExecutorService.shutdownNow();
             }
         }
         catch (Exception e)
