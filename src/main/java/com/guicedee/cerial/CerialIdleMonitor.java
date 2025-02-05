@@ -50,7 +50,7 @@ public class CerialIdleMonitor implements Runnable
 
     public void begin()
     {
-        scheduledExecutorService.scheduleWithFixedDelay(this, initialDelay, period, TimeUnit.SECONDS);
+        scheduledExecutorService.scheduleWithFixedDelay(this, initialDelay, seconds, TimeUnit.SECONDS);
         Runtime.getRuntime()
                .addShutdownHook(new Thread(scheduledExecutorService::shutdownNow));
     }
