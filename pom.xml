@@ -36,6 +36,10 @@
             <artifactId>log4j-core</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>com.guicedee</groupId>
+            <artifactId>guiced-vertx</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>com.guicedee.services</groupId>

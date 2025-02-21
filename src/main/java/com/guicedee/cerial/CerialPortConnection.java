@@ -88,7 +88,7 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
     private Integer bufferSize = 1024;
 
 
-    private Integer idleTimerSeconds = 5;
+    private Integer idleTimerSeconds = 120;
 
 
     @JsonIgnore
@@ -146,21 +146,21 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
         serialPortMessageListener = new DataSerialPortMessageListener(endOfMessage, connectionPort, this);
         connectionPort.setBaudRate(baudRate.toInt());
         this.idleTimerSeconds = seconds;
-        this.setMonitor(new CerialIdleMonitor(this, 2, 1, seconds));
+        this.setMonitor(new CerialIdleMonitor(this, 2, 120, seconds));
 
         IGuiceContext.getAllLoadedServices().get(IGuicePreDestroy.class).add(this);
     }
 
     public CerialPortConnection(int comPort, BaudRate baudRate)
     {
-        this(comPort, baudRate, 60 * 10);
+        this(comPort, baudRate, 120);
     }
 
     public CerialIdleMonitor getMonitor()
     {
         if (monitor == null)
         {
-            this.setMonitor(new CerialIdleMonitor(this, 2, 1, idleTimerSeconds));
+            this.setMonitor(new CerialIdleMonitor(this, 2, 120, idleTimerSeconds));
         }
         return monitor;
     }

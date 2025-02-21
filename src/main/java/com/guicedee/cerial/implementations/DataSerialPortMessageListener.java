@@ -12,6 +12,7 @@ import com.guicedee.client.CallScoper;
 import com.guicedee.client.IGuiceContext;
 import com.guicedee.guicedservlets.websockets.options.CallScopeProperties;
 import com.guicedee.guicedservlets.websockets.options.CallScopeSource;
+import io.vertx.core.Vertx;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.java.Log;
@@ -127,7 +128,8 @@ public class DataSerialPortMessageListener implements SerialPortMessageListener,
 
         //   int numRead = comPort.readBytes(newData, newData.length);
         //   System.out.println("Read " + newData.length + " bytes.");
-        CompletableFuture.runAsync(() -> {
+        var vertx =IGuiceContext.get(Vertx.class);
+        vertx.executeBlocking(() -> {
             var callScoper = IGuiceContext.get(CallScoper.class);
             callScoper.enter();
             try
@@ -152,6 +154,7 @@ public class DataSerialPortMessageListener implements SerialPortMessageListener,
             {
                 callScoper.exit();
             }
-        });
+            return null;
+        },false);
     }
 }

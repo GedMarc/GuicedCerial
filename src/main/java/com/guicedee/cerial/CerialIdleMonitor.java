@@ -1,22 +1,22 @@
 package com.guicedee.cerial;
 
 import com.guicedee.cerial.enumerations.ComPortStatus;
+import com.guicedee.client.IGuiceContext;
+import io.vertx.core.Vertx;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.java.Log;
 
 import java.time.LocalDateTime;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 
-import static com.guicedee.cerial.enumerations.ComPortStatus.*;
+import static com.guicedee.cerial.enumerations.ComPortStatus.Silent;
+import static com.guicedee.cerial.enumerations.ComPortStatus.exceptionOperations;
 
 @Getter
 @Setter
 @Log
-public class CerialIdleMonitor implements Runnable
+public class CerialIdleMonitor
 {
     private final CerialPortConnection connection;
     private int initialDelay;
@@ -26,18 +26,16 @@ public class CerialIdleMonitor implements Runnable
 
     private ComPortStatus previousStatus;
 
-    private static final ThreadFactory factory = Thread.ofVirtual()
-                                                       .factory();
-    private ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(factory);
+    private long timerId;
 
     public CerialIdleMonitor(CerialPortConnection connection)
     {
         this.connection = connection;
         previousStatus = connection.getComPortStatus();
         initialDelay = 2;
-        period = 1;
+        period = 10;
         //10 minutes
-        seconds = (int) TimeUnit.SECONDS.toSeconds(60 * 10);
+        seconds = (int) TimeUnit.SECONDS.toSeconds(120);
     }
 
     public CerialIdleMonitor(CerialPortConnection connection, int initialDelay, int period, int seconds)
@@ -50,9 +48,20 @@ public class CerialIdleMonitor implements Runnable
 
     public void begin()
     {
-        scheduledExecutorService.scheduleWithFixedDelay(this, initialDelay, seconds, TimeUnit.SECONDS);
-        Runtime.getRuntime()
-               .addShutdownHook(new Thread(scheduledExecutorService::shutdownNow));
+        var vertx = IGuiceContext.get(Vertx.class);
+        timerId = vertx.setPeriodic(TimeUnit.SECONDS.toMillis(period), (handler) -> {
+            if (!exceptionOperations.contains(connection.getComPortStatus()) &&
+                    (connection.getComPortStatus() != Silent &&
+                            ComPortStatus.onlineServerStatus.contains(connection.getComPortStatus())) &&
+                    (connection.getLastMessageTime() == null || connection.getLastMessageTime()
+                            .isBefore(LocalDateTime.now()
+                                    .minusSeconds(seconds))
+
+                    ))
+            {
+                connection.setComPortStatus(ComPortStatus.Idle);
+            }
+        });
     }
 
     private String getIdleMonitorName()
@@ -62,38 +71,8 @@ public class CerialIdleMonitor implements Runnable
 
     public void end()
     {
-        scheduledExecutorService.shutdown();
-        try
-        {
-            boolean success = scheduledExecutorService.awaitTermination(5, TimeUnit.SECONDS);
-            if (!success)
-            {
-                log.warning("Await termination for " + getIdleMonitorName() + " timed out");
-                scheduledExecutorService.shutdownNow();
-            }
-        }
-        catch (Exception e)
-        {
-            scheduledExecutorService.shutdownNow();
-        }
-        scheduledExecutorService = null;
-        scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(factory);
+        var vertx = IGuiceContext.get(Vertx.class);
+        vertx.cancelTimer(timerId);
     }
-
-    public void run()
-    {
-        if(!exceptionOperations.contains(connection.getComPortStatus()) &&
-                (connection.getComPortStatus() != Silent &&
-                        ComPortStatus.onlineServerStatus.contains(connection.getComPortStatus())) &&
-                        (connection.getLastMessageTime()
-                                   .isBefore(LocalDateTime.now()
-                                                          .minusSeconds(seconds))
-
-                        ))
-        {
-            connection.setComPortStatus(ComPortStatus.Idle);
-        }
-    }
-
 
 }

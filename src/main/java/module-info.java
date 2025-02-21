@@ -9,6 +9,7 @@ module com.guicedee.cerial {
     requires java.logging;
 
     requires org.apache.logging.log4j;
+    requires io.vertx.core;
 
     requires transitive com.guicedee.client;
     requires transitive com.guicedee.jsonrepresentation;

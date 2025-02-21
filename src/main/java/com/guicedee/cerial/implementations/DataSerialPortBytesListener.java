@@ -10,6 +10,7 @@ import com.guicedee.client.CallScoper;
 import com.guicedee.client.IGuiceContext;
 import com.guicedee.guicedservlets.websockets.options.CallScopeProperties;
 import com.guicedee.guicedservlets.websockets.options.CallScopeSource;
+import io.vertx.core.Vertx;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.java.Log;
@@ -83,7 +84,7 @@ public class DataSerialPortBytesListener implements SerialPortDataListenerWithEx
         return LISTENING_EVENT_DATA_RECEIVED | LISTENING_EVENT_PORT_DISCONNECTED | LISTENING_EVENT_BREAK_INTERRUPT | LISTENING_EVENT_FRAMING_ERROR | LISTENING_EVENT_FIRMWARE_OVERRUN_ERROR | LISTENING_EVENT_PARITY_ERROR | LISTENING_EVENT_SOFTWARE_OVERRUN_ERROR;
     }
 
-    public static byte[] remove(byte[] array, byte toRemove)
+    public byte[] remove(byte[] array, byte toRemove)
     {
         List<Byte> byteList = new ArrayList<>(Arrays.asList(ArrayUtils.toObject(array)));
         byteList.removeIf(b -> b == toRemove);
@@ -151,9 +152,9 @@ public class DataSerialPortBytesListener implements SerialPortDataListenerWithEx
                 continue;
             }
             Character c = (char) b;
-            if ( (!allowedChars.isEmpty() && !allowedChars.contains((char) b)) && (delimiter.length > 0 && !delChars.contains(c)))
+            if ((!allowedChars.isEmpty() && !allowedChars.contains((char) b)) && (delimiter.length > 0 && !delChars.contains(c)))
             {
-                log.warning("Character not allowed on serial port - " + getComPort().getDescriptivePortName() + " - [" + (char)b + "]. Reset Buffer" );
+                log.warning("Character not allowed on serial port - " + getComPort().getDescriptivePortName() + " - [" + (char) b + "]. Reset Buffer");
                 buffer = new StringBuilder();
                 continue;
             }
@@ -224,13 +225,13 @@ public class DataSerialPortBytesListener implements SerialPortDataListenerWithEx
 
     private void processMessage(byte[] newData)
     {
-        synchronized (this)
+        //synchronized (this)
         {
             try
             {
-                if(!(new String(newData).endsWith("\n")))
+                if (!(new String(newData).endsWith("\n")))
                 {
-                    newData = ArrayUtils.add(newData, (byte)'\n');
+                    newData = ArrayUtils.add(newData, (byte) '\n');
                 }
                 FileUtils.writeByteArrayToFile(new File("cerial/COM" + connection.getComPort() + ".log"), newData, true);
             } catch (IOException e)
@@ -241,7 +242,8 @@ public class DataSerialPortBytesListener implements SerialPortDataListenerWithEx
         try
         {
             byte[] finalNewData = newData;
-            CompletableFuture.supplyAsync(() -> {
+            var vertx = IGuiceContext.get(Vertx.class);
+            vertx.executeBlocking(() -> {
                 var callScoper = IGuiceContext.get(CallScoper.class);
                 callScoper.enter();
                 try
@@ -255,7 +257,6 @@ public class DataSerialPortBytesListener implements SerialPortDataListenerWithEx
                     getConnection().setComPortStatus(Running);
                     // log.warning(MessageFormat.format("RX : {0}", new String(newData)));
                     System.out.println("[" + portNumberFormat.format(connection.getComPort()) + "] RX - " + new String(finalNewData));
-
                     if (comPortRead != null)
                     {
                         comPortRead.accept(finalNewData, comPort);
@@ -268,7 +269,7 @@ public class DataSerialPortBytesListener implements SerialPortDataListenerWithEx
                     callScoper.exit();
                 }
                 return true;
-            }).get(10, TimeUnit.SECONDS);
+            }, false);
         } catch (Exception e)
         {
             log.log(Level.SEVERE, "Error on running bytes serial ComPort [" + connection.getComPort() + "] Receipt", e);
