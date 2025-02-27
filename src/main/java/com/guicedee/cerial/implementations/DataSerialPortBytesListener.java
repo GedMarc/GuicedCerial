@@ -19,6 +19,8 @@ import org.apache.commons.lang3.ArrayUtils;
 
 import java.io.File;
 import java.io.IOException;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -139,7 +141,8 @@ public class DataSerialPortBytesListener implements SerialPortDataListenerWithEx
         }
         try
         {
-            FileUtils.writeByteArrayToFile(new File("cerial/COM" + connection.getComPort() + "TRACE" + ".log"), newData, true);
+            FileUtils.writeByteArrayToFile(new File("cerial/COM" + connection.getComPort() + "TRACE" + ".log"),
+                    ("[" + DateTimeFormatter.ISO_INSTANT.format(OffsetDateTime.now()) + "] - [" + portNumberFormat.format(comPort) + "] RX - " + new String(newData)).getBytes(), true);
         } catch (IOException e)
         {
             log.warning("Couldn't log down raw bytes from com port - " + connection.getComPort());

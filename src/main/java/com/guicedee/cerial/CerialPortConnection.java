@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fazecast.jSerialComm.SerialPort;
 import com.fazecast.jSerialComm.SerialPortDataListener;
+import com.google.common.base.Strings;
 import com.google.inject.Inject;
 import com.guicedee.cerial.enumerations.*;
 import com.guicedee.cerial.implementations.*;
@@ -15,18 +16,24 @@ import com.guicedee.guicedinjection.interfaces.IGuicePreDestroy;
 import com.guicedee.services.jsonrepresentation.IJsonRepresentation;
 import lombok.*;
 import lombok.extern.java.Log;
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.function.TriConsumer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.io.File;
+import java.io.IOException;
 import java.io.OutputStream;
 import java.io.Serial;
 import java.nio.charset.StandardCharsets;
 import java.text.NumberFormat;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashSet;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
+import java.util.logging.Level;
 
 import static com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.ANY;
 import static com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.NONE;
@@ -344,12 +351,21 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
     {
         if (connectionPort != null && connectionPort.isOpen())
         {
+            if(!Strings.isNullOrEmpty(message))
             {
                 if (!message.endsWith(String.valueOf('\n')))
                 {
                     message += '\n';
                 }
-                System.out.print("[" + portNumberFormat.format(comPort) + "] TX - " + message);
+                try
+                {
+                    FileUtils.writeByteArrayToFile(new File("cerial/COM" + getComPort() + ".log"), message.getBytes(), true);
+                    FileUtils.writeByteArrayToFile(new File("cerial/COM" + getComPort() + "TRACE" + ".log"),
+                            ("[" + DateTimeFormatter.ISO_INSTANT.format(OffsetDateTime.now()) + "] - [" + portNumberFormat.format(comPort) + "] TX - " + message).getBytes(), true);
+                } catch (Throwable e)
+                {
+                    log.log(Level.WARNING,"Couldn't log down raw bytes from com port - " + getComPort(),e);
+                }
                 connectionPort.writeBytes(message.getBytes(StandardCharsets.UTF_8), message.length());
             }
             //getLogger().warn("TX : {}", message);
