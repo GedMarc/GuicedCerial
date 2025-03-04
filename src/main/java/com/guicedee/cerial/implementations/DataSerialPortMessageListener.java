@@ -64,7 +64,7 @@ public class DataSerialPortMessageListener implements SerialPortMessageListener,
         this.comPort = comPort;
         this.connection = connection;
         log = LogUtils.getSpecificRollingLogger("COM" + connection.getComPort(), "cerial",
-                "[%d{yyyy-MM-dd HH:mm:ss.SSS}] [%-5level] - [%msg]%n");
+                "[%d{yyyy-MM-dd HH:mm:ss.SSS}] [%-5level] - [%msg]%n",true);
     }
 
     @Override

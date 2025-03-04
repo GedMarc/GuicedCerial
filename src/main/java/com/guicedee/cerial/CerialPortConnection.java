@@ -124,9 +124,6 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
     @JsonIgnore
     CallScoper callScoper;
 
-    @JsonIgnore
-    private Logger logger;
-
     public J reset()
     {
         baudRate = BaudRate.$9600;
@@ -170,7 +167,8 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
     public org.apache.logging.log4j.core.Logger getLog()
     {
         if(log == null)
-            log = LogUtils.getSpecificRollingLogger("COM" + comPort, "cerial", "[%d{yyyy-MM-dd HH:mm:ss.SSS}] [%-5level] - [%msg]%n");
+            log = LogUtils.getSpecificRollingLogger("COM" + comPort, "cerial",
+                    "[%d{yyyy-MM-dd HH:mm:ss.SSS}] [%-5level] - [%msg]%n",true);
         return log;
     }
 
@@ -199,14 +197,14 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
                 afterConnect();
                 registerShutdownHook();
                 setComPortStatus(Idle);
-                log.trace("Com Port Connected - {}", getComPortName());
+                getLog().trace("Com Port Connected - {}", getComPortName());
             } else
             {
                 setComPortStatus(Missing);
             }
         } catch (Throwable e)
         {
-            log.fatal("Error connecting to port", e);
+            getLog().fatal("Error connecting to port", e);
             onConnectError(e, ComPortStatus.GeneralException);
         }
         return (J) this;
@@ -283,7 +281,7 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
             comPortError.accept(e, this, status);
         } else
         {
-            e.printStackTrace();
+            getLog().error("Error Connecting to Port", e);
             setComPortStatus(status);
         }
         disconnect();
@@ -365,12 +363,12 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
                     message += '\n';
                 }
                 connectionPort.writeBytes(message.getBytes(StandardCharsets.UTF_8), message.length());
-                log.info("TX] - [" + portNumberFormat.format(getComPort()) + "] - [" + message.trim());
+                getLog().info("TX] - [" + portNumberFormat.format(getComPort()) + "] - [" + message.trim());
             }
             //log.warn("TX : {}", message);
         } else
         {
-            log.trace("Message NOT Sent - {}", message);
+            getLog().trace("Message NOT Sent - {}", message);
         }
     }
 
@@ -414,8 +412,6 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
     public J setComPort(Integer comPort)
     {
         this.comPort = comPort;
-        if(log == null)
-            log = LogUtils.getSpecificRollingLogger("COM" + comPort, "cerial", "[%d{yyyy-MM-dd HH:mm:ss.SSS}] [%-5level] - [%msg]%n");
         return (J) this;
     }
 
@@ -429,7 +425,7 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
     {
         if (this.comPortStatus != comPortStatus && this.comPortStatusUpdate != null)
         {
-            log.debug("Updating Port [" + comPort + "] to [" + comPortStatus + "]");
+            getLog().debug("Updating Port [" + comPort + "] to [" + comPortStatus + "]");
             this.comPortStatusUpdate.accept(this, comPortStatus);
         }
         this.comPortStatus = comPortStatus;
@@ -488,7 +484,7 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
     {
         if (this.serialPortMessageListener == null)
         {
-            logger.warn("Port not yet ready");
+            getLog().warn("Port not yet ready");
             return (J) this;
         }
         ((ComPortEvents) serialPortMessageListener).setComPortRead(comPortRead);

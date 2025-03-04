@@ -78,7 +78,8 @@ public class DataSerialPortBytesListener implements SerialPortDataListenerWithEx
         this.delimiter = delimiter;
         this.comPort = comPort;
         this.connection = connection;
-        log = LogUtils.getSpecificRollingLogger("COM" + connection.getComPort(), "cerial", "[%d{yyyy-MM-dd HH:mm:ss.SSS}] [%-5level] - [%msg]%n");
+        log = LogUtils.getSpecificRollingLogger("COM" + connection.getComPort(), "cerial",
+                "[%d{yyyy-MM-dd HH:mm:ss.SSS}] [%-5level] - [%msg]%n",true);
     }
 
     @Override
