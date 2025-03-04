@@ -12,6 +12,7 @@ import com.guicedee.cerial.enumerations.*;
 import com.guicedee.cerial.implementations.*;
 import com.guicedee.client.CallScoper;
 import com.guicedee.client.IGuiceContext;
+import com.guicedee.guicedinjection.LogUtils;
 import com.guicedee.guicedinjection.interfaces.IGuicePreDestroy;
 import com.guicedee.services.jsonrepresentation.IJsonRepresentation;
 import lombok.*;
@@ -50,7 +51,6 @@ import static lombok.AccessLevel.PRIVATE;
 @JsonIgnoreProperties(ignoreUnknown = true, value = {"inspection"})
 @JsonAutoDetect(fieldVisibility = ANY, getterVisibility = NONE, setterVisibility = NONE)
 @NoArgsConstructor
-@Log
 public class CerialPortConnection<J extends CerialPortConnection<J>> implements IJsonRepresentation<J>,
         IGuicePreDestroy<J>
 {
@@ -58,6 +58,9 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
     private static final long serialVersionUID = 1L;
 
     public static NumberFormat portNumberFormat = NumberFormat.getNumberInstance();
+
+    @JsonIgnore
+    private org.apache.logging.log4j.core.Logger log;
 
     static
     {
@@ -158,6 +161,19 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
         IGuiceContext.getAllLoadedServices().get(IGuicePreDestroy.class).add(this);
     }
 
+    public J setComPort(int comPort)
+    {
+        this.comPort = comPort;
+        return (J)this;
+    }
+
+    public org.apache.logging.log4j.core.Logger getLog()
+    {
+        if(log == null)
+            log = LogUtils.getSpecificRollingLogger("COM" + comPort, "cerial", "[%d{yyyy-MM-dd HH:mm:ss.SSS}] [%-5level] - [%msg]%n");
+        return log;
+    }
+
     public CerialPortConnection(int comPort, BaudRate baudRate)
     {
         this(comPort, baudRate, 120);
@@ -183,14 +199,14 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
                 afterConnect();
                 registerShutdownHook();
                 setComPortStatus(Idle);
-                getLogger().info("Com Port Connected - {}", getComPortName());
+                log.trace("Com Port Connected - {}", getComPortName());
             } else
             {
                 setComPortStatus(Missing);
             }
         } catch (Throwable e)
         {
-            getLogger().fatal("Error connecting to port", e);
+            log.fatal("Error connecting to port", e);
             onConnectError(e, ComPortStatus.GeneralException);
         }
         return (J) this;
@@ -325,15 +341,6 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
         return (J) this;
     }
 
-    private Logger getLogger()
-    {
-        if (logger == null)
-        {
-            return logger = LogManager.getLogger("COM" + comPort);
-        }
-        return logger;
-    }
-
     @JsonProperty
     protected String getComPortName()
     {
@@ -357,21 +364,13 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
                 {
                     message += '\n';
                 }
-                try
-                {
-                    FileUtils.writeByteArrayToFile(new File("cerial/COM" + getComPort() + ".log"), message.getBytes(), true);
-                    FileUtils.writeByteArrayToFile(new File("cerial/COM" + getComPort() + "TRACE" + ".log"),
-                            ("[" + DateTimeFormatter.ISO_INSTANT.format(OffsetDateTime.now()) + "] - [" + portNumberFormat.format(comPort) + "] TX - " + message).getBytes(), true);
-                } catch (Throwable e)
-                {
-                    log.log(Level.WARNING,"Couldn't log down raw bytes from com port - " + getComPort(),e);
-                }
                 connectionPort.writeBytes(message.getBytes(StandardCharsets.UTF_8), message.length());
+                log.info("TX] - [" + portNumberFormat.format(getComPort()) + "] - [" + message.trim());
             }
-            //getLogger().warn("TX : {}", message);
+            //log.warn("TX : {}", message);
         } else
         {
-            getLogger().trace("Message NOT Sent - {}", message);
+            log.trace("Message NOT Sent - {}", message);
         }
     }
 
@@ -415,6 +414,8 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
     public J setComPort(Integer comPort)
     {
         this.comPort = comPort;
+        if(log == null)
+            log = LogUtils.getSpecificRollingLogger("COM" + comPort, "cerial", "[%d{yyyy-MM-dd HH:mm:ss.SSS}] [%-5level] - [%msg]%n");
         return (J) this;
     }
 
@@ -428,7 +429,7 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
     {
         if (this.comPortStatus != comPortStatus && this.comPortStatusUpdate != null)
         {
-            getLogger().debug("Updating Port [" + comPort + "] to [" + comPortStatus + "]");
+            log.debug("Updating Port [" + comPort + "] to [" + comPortStatus + "]");
             this.comPortStatusUpdate.accept(this, comPortStatus);
         }
         this.comPortStatus = comPortStatus;

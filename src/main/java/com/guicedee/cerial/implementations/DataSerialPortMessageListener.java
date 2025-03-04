@@ -10,6 +10,7 @@ import com.guicedee.cerial.SerialPortException;
 import com.guicedee.cerial.enumerations.ComPortStatus;
 import com.guicedee.client.CallScoper;
 import com.guicedee.client.IGuiceContext;
+import com.guicedee.guicedinjection.LogUtils;
 import com.guicedee.guicedservlets.websockets.options.CallScopeProperties;
 import com.guicedee.guicedservlets.websockets.options.CallScopeSource;
 import io.vertx.core.Vertx;
@@ -17,6 +18,7 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.java.Log;
 import org.apache.commons.lang3.ArrayUtils;
+import org.apache.logging.log4j.core.Logger;
 
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
@@ -38,9 +40,10 @@ import static lombok.AccessLevel.PRIVATE;
 
 @Getter
 @Setter
-@Log
 public class DataSerialPortMessageListener implements SerialPortMessageListener, ComPortEvents
 {
+    @JsonIgnore
+    private Logger log;
 
     @JsonIgnore
     
@@ -60,6 +63,8 @@ public class DataSerialPortMessageListener implements SerialPortMessageListener,
         this.delimiter = delimiter;
         this.comPort = comPort;
         this.connection = connection;
+        log = LogUtils.getSpecificRollingLogger("COM" + connection.getComPort(), "cerial",
+                "[%d{yyyy-MM-dd HH:mm:ss.SSS}] [%-5level] - [%msg]%n");
     }
 
     @Override
@@ -91,26 +96,26 @@ public class DataSerialPortMessageListener implements SerialPortMessageListener,
     public void serialEvent(SerialPortEvent event)
     {
         if (event.getEventType() == LISTENING_EVENT_SOFTWARE_OVERRUN_ERROR) {
-            log.log(Level.SEVERE, event.toString());
+            log.error( event.toString());
             connection.onConnectError(new SerialPortException("Software Overrun Error - " + event.toString()), ComPortStatus.GeneralException);
         }
         else  if (event.getEventType() == LISTENING_EVENT_PARITY_ERROR) {
-            log.log(Level.SEVERE,"Software Parity Error - " + event.toString());
+            log.error("Software Parity Error - " + event.toString());
             connection.onConnectError(new SerialPortException("Software Parity Error - " + event.toString()), ComPortStatus.GeneralException);
         }
         else  if (event.getEventType() == LISTENING_EVENT_FRAMING_ERROR) {
-            log.log(Level.SEVERE,"Hardware Framing Error - " + event.toString());
+            log.error("Hardware Framing Error - " + event.toString());
             connection.onConnectError(new SerialPortException("Hardware Framing Error - " + event.toString()), ComPortStatus.GeneralException);
         }
         else  if (event.getEventType() == LISTENING_EVENT_FIRMWARE_OVERRUN_ERROR) {
-            log.log(Level.SEVERE,"Hardware Firmware Overrun Error - " + event.toString());
+            log.error("Hardware Firmware Overrun Error - " + event.toString());
             connection.onConnectError(new SerialPortException("Hardware Firmware Overrun Error - " + event.toString()), ComPortStatus.GeneralException);
         }
         else  if (event.getEventType() == LISTENING_EVENT_BREAK_INTERRUPT) {
-            log.log(Level.SEVERE,"Hardware Break Interrupt Error - " + event.toString());
+            log.error("Hardware Break Interrupt Error - " + event.toString());
             connection.onConnectError(new SerialPortException("Hardware Break Interrupt Error - " + event.toString()), ComPortStatus.GeneralException);
         } else if (event.getEventType() == LISTENING_EVENT_PORT_DISCONNECTED) {
-            log.log(Level.SEVERE, event.toString());
+            log.error( event.toString());
             connection.setComPortStatus(Offline);
         } else if (event.getEventType() == LISTENING_EVENT_DATA_RECEIVED)
         {
@@ -126,8 +131,7 @@ public class DataSerialPortMessageListener implements SerialPortMessageListener,
         if (Strings.isNullOrEmpty(new String(newData).trim()))
             return;
 
-        //   int numRead = comPort.readBytes(newData, newData.length);
-        //   System.out.println("Read " + newData.length + " bytes.");
+        log.info("RX] - [" + portNumberFormat.format(getConnection().getComPort()) + "] - [" + portNumberFormat.format(connection.getComPort()) + " - " + new String(newData).trim());
         var vertx =IGuiceContext.get(Vertx.class);
         vertx.executeBlocking(() -> {
             var callScoper = IGuiceContext.get(CallScoper.class);
@@ -142,14 +146,14 @@ public class DataSerialPortMessageListener implements SerialPortMessageListener,
                         .put("CerialPortConnection", this);
                 getConnection().setComPortStatus(Running);
                 // log.warning(MessageFormat.format("RX : {0}", new String(newData)));
-                System.out.print("[" + portNumberFormat.format(connection.getComPort()) + "] RX - " + new String(newData));
+                //System.out.print("[" + portNumberFormat.format(connection.getComPort()) + "] RX - " + new String(newData));
                 if (comPortRead != null)
                 {
                     comPortRead.accept(newData, comPort);
                 }
             } catch (Throwable T)
             {
-                log.log(Level.SEVERE, "Error on ComPort [" + connection.getComPort() + "] Receipt", T);
+                log.error( "Error on ComPort [" + connection.getComPort() + "] Receipt", T);
             } finally
             {
                 callScoper.exit();
