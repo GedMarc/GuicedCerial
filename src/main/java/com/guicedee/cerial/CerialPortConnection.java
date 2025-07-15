@@ -41,6 +41,43 @@ import static com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.NONE;
 import static com.guicedee.cerial.enumerations.ComPortStatus.*;
 import static lombok.AccessLevel.PRIVATE;
 
+/**
+ * Main class for managing serial port connections in the GuicedCerial module.
+ * <p>
+ * This class provides a high-level API for configuring, connecting to, and communicating
+ * with serial ports. It integrates with the GuicedInjection framework for dependency
+ * injection and lifecycle management.
+ * <p>
+ * Features include:
+ * <ul>
+ *   <li>Configuration of serial port parameters (baud rate, data bits, parity, stop bits, flow control)</li>
+ *   <li>Connection management (connect, disconnect)</li>
+ *   <li>Data transmission and reception</li>
+ *   <li>Status monitoring and event handling</li>
+ *   <li>Automatic lifecycle management</li>
+ * </ul>
+ * <p>
+ * Example usage:
+ * <pre>
+ * CerialPortConnection connection = new CerialPortConnection(1, BaudRate.$9600);
+ * connection.setDataBits(DataBits.$8)
+ *           .setParity(Parity.None)
+ *           .setStopBits(StopBits.$1)
+ *           .setFlowControl(FlowControl.None)
+ *           .connect();
+ * 
+ * // Send data
+ * connection.write("Hello, world!");
+ * 
+ * // Receive data
+ * connection.setComPortRead((data, port) -> {
+ *     String message = new String(data).trim();
+ *     System.out.println("Received: " + message);
+ * });
+ * </pre>
+ *
+ * @param <J> The type of the implementing class for method chaining
+ */
 @SuppressWarnings({"UnusedReturnValue",
         "unchecked",
         "unused"})
@@ -57,8 +94,10 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
     @Serial
     private static final long serialVersionUID = 1L;
 
+    /** Format for port numbers, ensuring they are displayed with 3 digits. */
     public static NumberFormat portNumberFormat = NumberFormat.getNumberInstance();
 
+    /** Logger for this connection. */
     @JsonIgnore
     private org.apache.logging.log4j.core.Logger log;
 
@@ -70,34 +109,61 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
         portNumberFormat.setMaximumIntegerDigits(3);
     }
 
+    /** The underlying jSerialComm port. */
     @JsonIgnore
     private com.fazecast.jSerialComm.SerialPort connectionPort;
 
+    /**
+     * Sets the underlying jSerialComm port.
+     *
+     * @param connectionPort the jSerialComm port
+     * @return this instance for method chaining
+     */
     public J setConnectionPort(SerialPort connectionPort)
     {
         this.connectionPort = connectionPort;
         return (J) this;
     }
 
+    /** Flag indicating if the output buffer is empty. */
     @JsonIgnore
     private final AtomicBoolean outputBufferEmpty = new AtomicBoolean(false);
+
+    /** Flag indicating if the port is clear to send data. */
     @JsonIgnore
     private final AtomicBoolean clearToSend = new AtomicBoolean(false);
 
+    /** The COM port number (e.g., 1 for COM1). */
     private Integer comPort;
 
+    /** The baud rate for the connection. Default is 9600. */
     private BaudRate baudRate = BaudRate.$9600;
+
+    /** The current status of the connection. Default is Offline. */
     private ComPortStatus comPortStatus = ComPortStatus.Offline;
+
+    /** The type of COM port. Default is Device. */
     private ComPortType comPortType = ComPortType.Device;
+
+    /** The number of data bits. Default is 8. */
     private DataBits dataBits = DataBits.$8;
+
+    /** The flow control method. Default is None. */
     private FlowControl flowControl = FlowControl.None;
+
+    /** The parity checking method. Default is None. */
     private Parity parity = Parity.None;
+
+    /** The number of stop bits. Default is 1. */
     private StopBits stopBits = StopBits.$1;
+
+    /** The flow type. Default is None. */
     private FlowType flow = FlowType.None;
 
+    /** The buffer size for reading data. Default is 1024 bytes. */
     private Integer bufferSize = 1024;
 
-
+    /** The number of seconds after which a connection is considered idle. Default is 120 seconds (2 minutes). */
     private Integer idleTimerSeconds = 120;
 
 
@@ -142,6 +208,13 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
     @JsonIgnore
     private SerialPortDataListener serialPortMessageListener;
 
+    /**
+     * Creates a new serial port connection with the specified parameters and idle timeout.
+     *
+     * @param comPort  the COM port number (e.g., 1 for COM1)
+     * @param baudRate the baud rate for the connection
+     * @param seconds  the number of seconds after which the connection is considered idle
+     */
     public CerialPortConnection(int comPort, BaudRate baudRate, int seconds)
     {
         this.comPort = comPort;
@@ -158,12 +231,26 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
         IGuiceContext.getAllLoadedServices().get(IGuicePreDestroy.class).add(this);
     }
 
+    /**
+     * Sets the COM port number.
+     *
+     * @param comPort the COM port number (e.g., 1 for COM1)
+     * @return this instance for method chaining
+     */
     public J setComPort(int comPort)
     {
         this.comPort = comPort;
         return (J)this;
     }
 
+    /**
+     * Gets the logger for this connection.
+     * <p>
+     * If the logger doesn't exist yet, it is created with a specific format and file name
+     * based on the COM port number.
+     *
+     * @return the logger for this connection
+     */
     public org.apache.logging.log4j.core.Logger getLog()
     {
         if(log == null)
@@ -172,11 +259,24 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
         return log;
     }
 
+    /**
+     * Creates a new serial port connection with the specified parameters and a default idle timeout of 120 seconds.
+     *
+     * @param comPort  the COM port number (e.g., 1 for COM1)
+     * @param baudRate the baud rate for the connection
+     */
     public CerialPortConnection(int comPort, BaudRate baudRate)
     {
         this(comPort, baudRate, 120);
     }
 
+    /**
+     * Gets the idle monitor for this connection.
+     * <p>
+     * If the monitor doesn't exist yet, it is created with default settings.
+     *
+     * @return the idle monitor for this connection
+     */
     public CerialIdleMonitor getMonitor()
     {
         if (monitor == null)
@@ -186,6 +286,23 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
         return monitor;
     }
 
+    /**
+     * Connects to the serial port.
+     * <p>
+     * This method performs the following steps:
+     * <ol>
+     *   <li>Calls {@link #beforeConnect()} to prepare the connection</li>
+     *   <li>Opens the port</li>
+     *   <li>If successful, calls {@link #afterConnect()} to set up listeners and monitoring</li>
+     *   <li>Registers a shutdown hook for proper cleanup</li>
+     *   <li>Sets the connection status to {@link ComPortStatus#Idle}</li>
+     * </ol>
+     * <p>
+     * If the connection fails, the status is set to {@link ComPortStatus#Missing} or
+     * {@link ComPortStatus#GeneralException} depending on the error.
+     *
+     * @return this instance for method chaining
+     */
     public J connect()
     {
         beforeConnect();
@@ -210,6 +327,14 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
         return (J) this;
     }
 
+    /**
+     * Disconnects from the serial port.
+     * <p>
+     * This method closes the port if it is open and sets the connection status to
+     * {@link ComPortStatus#Offline}.
+     *
+     * @return this instance for method chaining
+     */
     public J disconnect()
     {
         if (connectionPort != null && connectionPort.isOpen())
@@ -351,6 +476,19 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
         }
     }
 
+    /**
+     * Writes a message to the serial port.
+     * <p>
+     * This method sends the specified message to the serial port. If the message doesn't
+     * end with a newline character, one is automatically added. The message is logged
+     * with the COM port number and the message content.
+     * <p>
+     * If the port is not open, the message is not sent and a trace log entry is made.
+     *
+     * @param message                the message to send
+     * @param checkForEndOfCharacter optional parameter (not used in the current implementation)
+     * @throws RuntimeException if an error occurs while writing to the port (wrapped by @SneakyThrows)
+     */
     @SneakyThrows
     public void write(String message, boolean... checkForEndOfCharacter)
     {
@@ -372,6 +510,15 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
         }
     }
 
+    /**
+     * Cleans up resources when the object is destroyed.
+     * <p>
+     * This method is called by the GuicedInjection framework during application shutdown.
+     * It disconnects from the serial port if it is open, ensuring proper resource cleanup.
+     * <p>
+     * This implementation of the {@link IGuicePreDestroy} interface ensures that serial
+     * port connections are properly closed when the application shuts down.
+     */
     @Override
     public void onDestroy()
     {
