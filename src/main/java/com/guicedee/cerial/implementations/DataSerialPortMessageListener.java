@@ -30,7 +30,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
-import java.util.logging.Level;
 
 import static com.fazecast.jSerialComm.SerialPort.*;
 import static com.guicedee.cerial.CerialPortConnection.portNumberFormat;
@@ -96,19 +95,19 @@ public class DataSerialPortMessageListener implements SerialPortMessageListener,
     public void serialEvent(SerialPortEvent event)
     {
         if (event.getEventType() == LISTENING_EVENT_SOFTWARE_OVERRUN_ERROR) {
-            log.error( event.toString());
+            log.error("❌ Software Overrun Error: {}", event.toString());
             connection.onConnectError(new SerialPortException("Software Overrun Error - " + event.toString()), ComPortStatus.GeneralException);
         }
         else  if (event.getEventType() == LISTENING_EVENT_PARITY_ERROR) {
-            log.error("Software Parity Error - " + event.toString());
+            log.error("❌ Software Parity Error: {}", event.toString());
             connection.onConnectError(new SerialPortException("Software Parity Error - " + event.toString()), ComPortStatus.GeneralException);
         }
         else  if (event.getEventType() == LISTENING_EVENT_FRAMING_ERROR) {
-            log.error("Hardware Framing Error - " + event.toString());
+            log.error("❌ Hardware Framing Error: {}", event.toString());
             connection.onConnectError(new SerialPortException("Hardware Framing Error - " + event.toString()), ComPortStatus.GeneralException);
         }
         else  if (event.getEventType() == LISTENING_EVENT_FIRMWARE_OVERRUN_ERROR) {
-            log.error("Hardware Firmware Overrun Error - " + event.toString());
+            log.error("❌ Hardware Firmware Overrun Error: {}", event.toString());
             connection.onConnectError(new SerialPortException("Hardware Firmware Overrun Error - " + event.toString()), ComPortStatus.GeneralException);
         }
         else  if (event.getEventType() == LISTENING_EVENT_BREAK_INTERRUPT) {

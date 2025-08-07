@@ -30,7 +30,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.BiConsumer;
-import java.util.logging.Level;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -100,27 +99,27 @@ public class DataSerialPortBytesListener implements SerialPortDataListenerWithEx
     {
         if (event.getEventType() == LISTENING_EVENT_SOFTWARE_OVERRUN_ERROR)
         {
-            log.error(event.toString());
+            log.error("❌ Software Overrun Error: {}", event.toString());
             connection.onConnectError(new SerialPortException("Software Overrun Error - " + event.toString()), ComPortStatus.GeneralException);
         } else if (event.getEventType() == LISTENING_EVENT_PARITY_ERROR)
         {
-            log.error("Software Parity Error - " + event.toString());
+            log.error("❌ Software Parity Error: {}", event.toString());
             connection.onConnectError(new SerialPortException("Software Parity Error - " + event.toString()), ComPortStatus.GeneralException);
         } else if (event.getEventType() == LISTENING_EVENT_FRAMING_ERROR)
         {
-            log.error("Hardware Framing Error - " + event.toString());
+            log.error("❌ Hardware Framing Error: {}", event.toString());
             connection.onConnectError(new SerialPortException("Hardware Framing Error - " + event.toString()), ComPortStatus.GeneralException);
         } else if (event.getEventType() == LISTENING_EVENT_FIRMWARE_OVERRUN_ERROR)
         {
-            log.error("Hardware Firmware Overrun Error - " + event.toString());
+            log.error("❌ Hardware Firmware Overrun Error: {}", event.toString());
             connection.onConnectError(new SerialPortException("Hardware Firmware Overrun Error - " + event.toString()), ComPortStatus.GeneralException);
         } else if (event.getEventType() == LISTENING_EVENT_BREAK_INTERRUPT)
         {
-            log.error("Hardware Break Interrupt Error - " + event.toString());
+            log.error("❌ Hardware Break Interrupt Error: {}", event.toString());
             connection.onConnectError(new SerialPortException("Hardware Break Interrupt Error - " + event.toString()), ComPortStatus.GeneralException);
         } else if (event.getEventType() == LISTENING_EVENT_PORT_DISCONNECTED)
         {
-            log.error(event.toString());
+            log.error("🔌 Port disconnected: {}", event.toString());
             connection.setComPortStatus(Offline);
         } else if (event.getEventType() == LISTENING_EVENT_DATA_RECEIVED)
         {
@@ -150,7 +149,7 @@ public class DataSerialPortBytesListener implements SerialPortDataListenerWithEx
             Character c = (char) b;
             if ((!allowedChars.isEmpty() && !allowedChars.contains((char) b)) && (delimiter.length > 0 && !delChars.contains(c)))
             {
-                log.warn("Character not allowed on serial port - " + getConnection().getComPort() + " - [" + (char) b + "]. Reset Buffer");
+                log.warn("⚠️ Character not allowed on serial port - Port [{}] - Character [{}] - Resetting buffer", getConnection().getComPort(), (char) b);
                 buffer = new StringBuilder();
                 continue;
             }
@@ -159,7 +158,7 @@ public class DataSerialPortBytesListener implements SerialPortDataListenerWithEx
             {
                 if (buffer.length() >= maxBufferLength)
                 {
-                    log.warn("Buffer reached on serial port - " + getConnection().getComPort() + ". Rolling data");
+                    log.warn("⚠️ Buffer limit reached on serial port - Port [{}] - Rolling data", getConnection().getComPort());
                     buffer.deleteCharAt(0);
                 }
                 buffer.append(String.valueOf((char) b).trim());
@@ -172,11 +171,11 @@ public class DataSerialPortBytesListener implements SerialPortDataListenerWithEx
                     try
                     {
                         if(!Strings.isNullOrEmpty(message))
-                            log.info("RX] - [" + portNumberFormat.format(connection.getComPort()) + "] - [" + message);
+                            log.info("📥 RX] - Port [{}] - Message: [{}]", portNumberFormat.format(connection.getComPort()), message);
                         processMessage(message.getBytes());
                     } catch (Throwable e)
                     {
-                        log.error(e.getMessage(), e);
+                        log.error("❌ Error processing received message: {}", e.getMessage(), e);
                     }
                     buffer = new StringBuilder(buffer.substring(matcher.end()));
                 }
@@ -197,7 +196,7 @@ public class DataSerialPortBytesListener implements SerialPortDataListenerWithEx
                 {
                     if (buffer.length() >= maxBufferLength)
                     {
-                        log.warn("Buffer reached on serial port - " + getComPort().getDescriptivePortName() + ". Rolling bytes");
+                        log.warn("⚠️ Buffer limit reached on serial port - Port [{}] - Rolling bytes", getComPort().getDescriptivePortName());
                         buffer.deleteCharAt(0);
                     }
                     buffer.append((char) b);
@@ -261,7 +260,6 @@ public class DataSerialPortBytesListener implements SerialPortDataListenerWithEx
     @Override
     public void catchException(Exception e)
     {
-        log.error("Error on ComPort [" + connection.getComPort() + "] Receipt", e);
-
+        log.error("❌ Error on ComPort [{}] Receipt: {}", connection.getComPort(), e.getMessage(), e);
     }
 }

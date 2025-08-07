@@ -16,7 +16,7 @@ import com.guicedee.guicedinjection.LogUtils;
 import com.guicedee.guicedinjection.interfaces.IGuicePreDestroy;
 import com.guicedee.services.jsonrepresentation.IJsonRepresentation;
 import lombok.*;
-import lombok.extern.java.Log;
+import lombok.extern.log4j.Log4j2;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.function.TriConsumer;
 import org.apache.logging.log4j.LogManager;
@@ -34,7 +34,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.HashSet;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
-import java.util.logging.Level;
 
 import static com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.ANY;
 import static com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.NONE;
@@ -314,14 +313,14 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
                 afterConnect();
                 registerShutdownHook();
                 setComPortStatus(Idle);
-                getLog().trace("Com Port Connected - {}", getComPortName());
+                getLog().trace("✅ Com Port Connected - {}", getComPortName());
             } else
             {
                 setComPortStatus(Missing);
             }
         } catch (Throwable e)
         {
-            getLog().fatal("Error connecting to port", e);
+            getLog().fatal("❌ Error connecting to port: {}", e.getMessage(), e);
             onConnectError(e, ComPortStatus.GeneralException);
         }
         return (J) this;
@@ -406,7 +405,7 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
             comPortError.accept(e, this, status);
         } else
         {
-            getLog().error("Error Connecting to Port", e);
+            getLog().error("❌ Error connecting to port: {}", e.getMessage(), e);
             setComPortStatus(status);
         }
         disconnect();
@@ -501,12 +500,12 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
                     message += '\n';
                 }
                 connectionPort.writeBytes(message.getBytes(StandardCharsets.UTF_8), message.length());
-                getLog().info("TX] - [" + portNumberFormat.format(getComPort()) + "] - [" + message.trim());
+                getLog().info("📤 TX] - Port [{}] - Message: [{}]", portNumberFormat.format(getComPort()), message.trim());
             }
             //log.warn("TX : {}", message);
         } else
         {
-            getLog().trace("Message NOT Sent - {}", message);
+            getLog().trace("⚠️ Message NOT sent - Port not open - Message: [{}]", message);
         }
     }
 
@@ -572,7 +571,7 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
     {
         if (this.comPortStatus != comPortStatus && this.comPortStatusUpdate != null)
         {
-            getLog().debug("Updating Port [" + comPort + "] to [" + comPortStatus + "]");
+            getLog().debug("🔄 Updating port status: Port [{}] changing to [{}]", comPort, comPortStatus);
             this.comPortStatusUpdate.accept(this, comPortStatus);
         }
         this.comPortStatus = comPortStatus;
