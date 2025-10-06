@@ -114,8 +114,8 @@ public class DataSerialPortMessageListener implements SerialPortMessageListener,
             log.error("Hardware Break Interrupt Error - " + event.toString());
             connection.onConnectError(new SerialPortException("Hardware Break Interrupt Error - " + event.toString()), ComPortStatus.GeneralException);
         } else if (event.getEventType() == LISTENING_EVENT_PORT_DISCONNECTED) {
-            log.error( event.toString());
-            connection.setComPortStatus(Offline);
+            log.error("🔌 Port disconnected: {}", event.toString());
+            connection.onConnectError(new SerialPortException("Port disconnected - " + event.toString()), ComPortStatus.Offline);
         } else if (event.getEventType() == LISTENING_EVENT_DATA_RECEIVED)
         {
             byte[] newData = event.getReceivedData();
@@ -130,7 +130,7 @@ public class DataSerialPortMessageListener implements SerialPortMessageListener,
         if (Strings.isNullOrEmpty(new String(newData).trim()))
             return;
 
-        log.info("RX] - [" + portNumberFormat.format(getConnection().getComPort()) + "] - [" + portNumberFormat.format(connection.getComPort()) + " - " + new String(newData).trim());
+        log.info("RX -  " + new String(newData).trim());
         var vertx =IGuiceContext.get(Vertx.class);
         vertx.executeBlocking(() -> {
             var callScoper = IGuiceContext.get(CallScoper.class);

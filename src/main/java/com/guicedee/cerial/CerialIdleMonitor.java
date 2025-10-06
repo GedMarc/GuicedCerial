@@ -1,5 +1,6 @@
 package com.guicedee.cerial;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.guicedee.cerial.enumerations.ComPortStatus;
 import com.guicedee.client.IGuiceContext;
 import io.vertx.core.Vertx;
@@ -29,6 +30,7 @@ import static com.guicedee.cerial.enumerations.ComPortStatus.exceptionOperations
 public class CerialIdleMonitor
 {
     /** The serial port connection being monitored. */
+    @JsonIgnore
     private final CerialPortConnection connection;
 
     /** The initial delay in seconds before the monitor starts checking for idle time. */

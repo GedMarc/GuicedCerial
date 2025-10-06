@@ -13,6 +13,9 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import org.junit.jupiter.api.Disabled;
+
+@Disabled("Requires real serial hardware; excluded from automated builds")
 class CerialPortConnectionTest {
     public static void main(String[] args) throws IOException, InterruptedException {
         new CerialPortConnectionTest().getSerialPort();

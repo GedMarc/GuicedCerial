@@ -120,7 +120,7 @@ public class DataSerialPortBytesListener implements SerialPortDataListenerWithEx
         } else if (event.getEventType() == LISTENING_EVENT_PORT_DISCONNECTED)
         {
             log.error("🔌 Port disconnected: {}", event.toString());
-            connection.setComPortStatus(Offline);
+            connection.onConnectError(new SerialPortException("Port disconnected - " + event.toString()), ComPortStatus.Offline);
         } else if (event.getEventType() == LISTENING_EVENT_DATA_RECEIVED)
         {
             byte[] newData = event.getReceivedData();

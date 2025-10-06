@@ -15,6 +15,8 @@ import com.guicedee.client.IGuiceContext;
 import com.guicedee.guicedinjection.LogUtils;
 import com.guicedee.guicedinjection.interfaces.IGuicePreDestroy;
 import com.guicedee.services.jsonrepresentation.IJsonRepresentation;
+import io.vertx.core.Vertx;
+import io.smallrye.mutiny.Uni;
 import lombok.*;
 import lombok.extern.log4j.Log4j2;
 import org.apache.commons.io.FileUtils;
@@ -28,10 +30,12 @@ import java.io.OutputStream;
 import java.io.Serial;
 import java.nio.charset.StandardCharsets;
 import java.text.NumberFormat;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashSet;
+import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 
@@ -64,10 +68,10 @@ import static lombok.AccessLevel.PRIVATE;
  *           .setStopBits(StopBits.$1)
  *           .setFlowControl(FlowControl.None)
  *           .connect();
- * 
+ *
  * // Send data
  * connection.write("Hello, world!");
- * 
+ *
  * // Receive data
  * connection.setComPortRead((data, port) -> {
  *     String message = new String(data).trim();
@@ -78,580 +82,759 @@ import static lombok.AccessLevel.PRIVATE;
  * @param <J> The type of the implementing class for method chaining
  */
 @SuppressWarnings({"UnusedReturnValue",
-        "unchecked",
-        "unused"})
+    "unchecked",
+    "unused"})
 @Getter
 @Setter
 @ToString(of = {"comPort",
-        "comPortStatus"})
+    "comPortStatus"})
 @JsonIgnoreProperties(ignoreUnknown = true, value = {"inspection"})
 @JsonAutoDetect(fieldVisibility = ANY, getterVisibility = NONE, setterVisibility = NONE)
 @NoArgsConstructor
 public class CerialPortConnection<J extends CerialPortConnection<J>> implements IJsonRepresentation<J>,
-        IGuicePreDestroy<J>
+                                                                                    IGuicePreDestroy<J>
 {
-    @Serial
-    private static final long serialVersionUID = 1L;
+  @Serial
+  private static final long serialVersionUID = 1L;
 
-    /** Format for port numbers, ensuring they are displayed with 3 digits. */
-    public static NumberFormat portNumberFormat = NumberFormat.getNumberInstance();
+  /**
+   * Format for port numbers, ensuring they are displayed with 3 digits.
+   */
+  public static NumberFormat portNumberFormat = NumberFormat.getNumberInstance();
 
-    /** Logger for this connection. */
-    @JsonIgnore
-    private org.apache.logging.log4j.core.Logger log;
+  /**
+   * Logger for this connection.
+   */
+  @JsonIgnore
+  private org.apache.logging.log4j.core.Logger log;
 
-    static
+  static
+  {
+    portNumberFormat.setMinimumIntegerDigits(3);
+    portNumberFormat.setMinimumFractionDigits(0);
+    portNumberFormat.setMaximumFractionDigits(0);
+    portNumberFormat.setMaximumIntegerDigits(3);
+  }
+
+  /**
+   * The underlying jSerialComm port.
+   */
+  @JsonIgnore
+  private com.fazecast.jSerialComm.SerialPort connectionPort;
+
+  /**
+   * Sets the underlying jSerialComm port.
+   *
+   * @param connectionPort the jSerialComm port
+   * @return this instance for method chaining
+   */
+  public J setConnectionPort(SerialPort connectionPort)
+  {
+    this.connectionPort = connectionPort;
+    return (J) this;
+  }
+
+  /**
+   * Flag indicating if the output buffer is empty.
+   */
+  @JsonIgnore
+  private final AtomicBoolean outputBufferEmpty = new AtomicBoolean(false);
+
+  /**
+   * Flag indicating if the port is clear to send data.
+   */
+  @JsonIgnore
+  private final AtomicBoolean clearToSend = new AtomicBoolean(false);
+
+  /**
+   * The COM port number (e.g., 1 for COM1).
+   */
+  private Integer comPort;
+
+  /**
+   * The baud rate for the connection. Default is 9600.
+   */
+  private BaudRate baudRate = BaudRate.$9600;
+
+  /**
+   * The current status of the connection. Default is Offline.
+   */
+  private ComPortStatus comPortStatus = ComPortStatus.Offline;
+
+  /**
+   * The type of COM port. Default is Device.
+   */
+  private ComPortType comPortType = ComPortType.Device;
+
+  /**
+   * The number of data bits. Default is 8.
+   */
+  private DataBits dataBits = DataBits.$8;
+
+  /**
+   * The flow control method. Default is None.
+   */
+  private FlowControl flowControl = FlowControl.None;
+
+  /**
+   * The parity checking method. Default is None.
+   */
+  private Parity parity = Parity.None;
+
+  /**
+   * The number of stop bits. Default is 1.
+   */
+  private StopBits stopBits = StopBits.$1;
+
+  /**
+   * The flow type. Default is None.
+   */
+  private FlowType flow = FlowType.None;
+
+  /**
+   * The buffer size for reading data. Default is 1024 bytes.
+   */
+  private Integer bufferSize = 1024;
+
+  /**
+   * The number of seconds after which a connection is considered idle. Default is 120 seconds (2 minutes).
+   */
+  private Integer idleTimerSeconds = 120;
+
+
+  @JsonIgnore
+  private OutputStream writer = null;
+
+  @JsonIgnore
+
+  private BiConsumer<CerialPortConnection<?>, ComPortStatus> comPortStatusUpdate;
+
+  @JsonIgnore
+
+  private TriConsumer<Throwable, CerialPortConnection<?>, ComPortStatus> comPortError;
+  @JsonIgnore
+  private CerialIdleMonitor monitor;
+
+  private LocalDateTime lastMessageTime;
+
+  @Setter
+  @Getter
+  private char[] endOfMessage = new char[]{'\n'};
+
+  @Inject
+  @JsonIgnore
+  CallScoper callScoper;
+
+  public J reset()
+  {
+    baudRate = BaudRate.$9600;
+    comPortStatus = ComPortStatus.Offline;
+    dataBits = DataBits.$8;
+    flowControl = FlowControl.None;
+    parity = Parity.None;
+    stopBits = StopBits.$1;
+    flow = FlowType.None;
+    Integer bufferSize = 1024;
+    Integer idleTimerSeconds = 5;
+    return (J) this;
+  }
+
+  private boolean run = false;
+  @JsonIgnore
+  private SerialPortDataListener serialPortMessageListener;
+
+  // Reconnect/backoff state
+  @JsonIgnore
+  private long reconnectTimerId = -1L;
+
+  @JsonIgnore
+  private int reconnectAttempts = 0;
+
+  // Configure reconnect backoff (in seconds)
+  private int initialReconnectDelaySeconds = 1;
+  private int maxReconnectDelaySeconds = 60;
+
+  /**
+   * Creates a new serial port connection with the specified parameters and idle timeout.
+   *
+   * @param comPort  the COM port number (e.g., 1 for COM1)
+   * @param baudRate the baud rate for the connection
+   * @param seconds  the number of seconds after which the connection is considered idle
+   */
+  public CerialPortConnection(int comPort, BaudRate baudRate, int seconds)
+  {
+    this.comPort = comPort;
+    this.baudRate = baudRate;
+    reset();
+    setComPortType(ComPortType.Device);
+
+    connectionPort = com.fazecast.jSerialComm.SerialPort.getCommPort(getComPortName());
+    serialPortMessageListener = new DataSerialPortMessageListener(endOfMessage, connectionPort, this);
+    connectionPort.setBaudRate(baudRate.toInt());
+    this.idleTimerSeconds = seconds;
+    this.setMonitor(new CerialIdleMonitor(this, 2, 120, seconds));
+    CerialPortConnection me = this;
+    IGuiceContext.getAllLoadedServices()
+        .computeIfAbsent(IGuicePreDestroy.class, k -> new TreeSet<>());
+    IGuiceContext.getAllLoadedServices()
+        .get(IGuicePreDestroy.class)
+        .add(me)
+    ;
+  }
+
+  /**
+   * Sets the COM port number.
+   *
+   * @param comPort the COM port number (e.g., 1 for COM1)
+   * @return this instance for method chaining
+   */
+  public J setComPort(int comPort)
+  {
+    this.comPort = comPort;
+    return (J) this;
+  }
+
+  /**
+   * Gets the logger for this connection.
+   * <p>
+   * If the logger doesn't exist yet, it is created with a specific format and file name
+   * based on the COM port number.
+   *
+   * @return the logger for this connection
+   */
+  public org.apache.logging.log4j.core.Logger getLog()
+  {
+    if (log == null)
     {
-        portNumberFormat.setMinimumIntegerDigits(3);
-        portNumberFormat.setMinimumFractionDigits(0);
-        portNumberFormat.setMaximumFractionDigits(0);
-        portNumberFormat.setMaximumIntegerDigits(3);
+      log = LogUtils.getSpecificRollingLogger("COM" + comPort, "cerial",
+          "[%d{yyyy-MM-dd HH:mm:ss.SSS}] [%-5level] - [%msg]%n", true);
     }
+    return log;
+  }
 
-    /** The underlying jSerialComm port. */
-    @JsonIgnore
-    private com.fazecast.jSerialComm.SerialPort connectionPort;
+  /**
+   * Creates a new serial port connection with the specified parameters and a default idle timeout of 120 seconds.
+   *
+   * @param comPort  the COM port number (e.g., 1 for COM1)
+   * @param baudRate the baud rate for the connection
+   */
+  public CerialPortConnection(int comPort, BaudRate baudRate)
+  {
+    this(comPort, baudRate, 120);
+  }
 
-    /**
-     * Sets the underlying jSerialComm port.
-     *
-     * @param connectionPort the jSerialComm port
-     * @return this instance for method chaining
-     */
-    public J setConnectionPort(SerialPort connectionPort)
+  /**
+   * Gets the idle monitor for this connection.
+   * <p>
+   * If the monitor doesn't exist yet, it is created with default settings.
+   *
+   * @return the idle monitor for this connection
+   */
+  public CerialIdleMonitor getMonitor()
+  {
+    if (monitor == null)
     {
-        this.connectionPort = connectionPort;
-        return (J) this;
+      this.setMonitor(new CerialIdleMonitor(this, 2, 120, idleTimerSeconds));
     }
+    return monitor;
+  }
 
-    /** Flag indicating if the output buffer is empty. */
-    @JsonIgnore
-    private final AtomicBoolean outputBufferEmpty = new AtomicBoolean(false);
-
-    /** Flag indicating if the port is clear to send data. */
-    @JsonIgnore
-    private final AtomicBoolean clearToSend = new AtomicBoolean(false);
-
-    /** The COM port number (e.g., 1 for COM1). */
-    private Integer comPort;
-
-    /** The baud rate for the connection. Default is 9600. */
-    private BaudRate baudRate = BaudRate.$9600;
-
-    /** The current status of the connection. Default is Offline. */
-    private ComPortStatus comPortStatus = ComPortStatus.Offline;
-
-    /** The type of COM port. Default is Device. */
-    private ComPortType comPortType = ComPortType.Device;
-
-    /** The number of data bits. Default is 8. */
-    private DataBits dataBits = DataBits.$8;
-
-    /** The flow control method. Default is None. */
-    private FlowControl flowControl = FlowControl.None;
-
-    /** The parity checking method. Default is None. */
-    private Parity parity = Parity.None;
-
-    /** The number of stop bits. Default is 1. */
-    private StopBits stopBits = StopBits.$1;
-
-    /** The flow type. Default is None. */
-    private FlowType flow = FlowType.None;
-
-    /** The buffer size for reading data. Default is 1024 bytes. */
-    private Integer bufferSize = 1024;
-
-    /** The number of seconds after which a connection is considered idle. Default is 120 seconds (2 minutes). */
-    private Integer idleTimerSeconds = 120;
-
-
-    @JsonIgnore
-    private OutputStream writer = null;
-
-    @JsonIgnore
-
-    private BiConsumer<CerialPortConnection<?>, ComPortStatus> comPortStatusUpdate;
-
-    @JsonIgnore
-
-    private TriConsumer<Throwable, CerialPortConnection<?>, ComPortStatus> comPortError;
-    @JsonIgnore
-    private CerialIdleMonitor monitor;
-
-    private LocalDateTime lastMessageTime;
-
-    @Setter
-    @Getter
-    private char[] endOfMessage = new char[]{'\r', '\n', (byte) 0x03};
-
-    @Inject
-    @JsonIgnore
-    CallScoper callScoper;
-
-    public J reset()
+  /**
+   * Connects to the serial port.
+   * <p>
+   * This method performs the following steps:
+   * <ol>
+   *   <li>Calls {@link #beforeConnect()} to prepare the connection</li>
+   *   <li>Opens the port</li>
+   *   <li>If successful, calls {@link #afterConnect()} to set up listeners and monitoring</li>
+   *   <li>Registers a shutdown hook for proper cleanup</li>
+   *   <li>Sets the connection status to {@link ComPortStatus#Idle}</li>
+   * </ol>
+   * <p>
+   * If the connection fails, the status is set to {@link ComPortStatus#Missing} or
+   * {@link ComPortStatus#GeneralException} depending on the error.
+   *
+   * @return this instance for method chaining
+   */
+  public J connect()
+  {
+    if (getConnectionPort() != null && getConnectionPort().isOpen())
     {
-        baudRate = BaudRate.$9600;
-        comPortStatus = ComPortStatus.Offline;
-        dataBits = DataBits.$8;
-        flowControl = FlowControl.None;
-        parity = Parity.None;
-        stopBits = StopBits.$1;
-        flow = FlowType.None;
-        Integer bufferSize = 1024;
-        Integer idleTimerSeconds = 5;
-        return (J) this;
+      return (J) this;
     }
-
-    private boolean run = false;
-    @JsonIgnore
-    private SerialPortDataListener serialPortMessageListener;
-
-    /**
-     * Creates a new serial port connection with the specified parameters and idle timeout.
-     *
-     * @param comPort  the COM port number (e.g., 1 for COM1)
-     * @param baudRate the baud rate for the connection
-     * @param seconds  the number of seconds after which the connection is considered idle
-     */
-    public CerialPortConnection(int comPort, BaudRate baudRate, int seconds)
+    beforeConnect();
+    try
     {
-        this.comPort = comPort;
-        this.baudRate = baudRate;
-        reset();
-        setComPortType(ComPortType.Device);
-
-        connectionPort = com.fazecast.jSerialComm.SerialPort.getCommPort(getComPortName());
-        serialPortMessageListener = new DataSerialPortMessageListener(endOfMessage, connectionPort, this);
-        connectionPort.setBaudRate(baudRate.toInt());
-        this.idleTimerSeconds = seconds;
-        this.setMonitor(new CerialIdleMonitor(this, 2, 120, seconds));
-
-        IGuiceContext.getAllLoadedServices().get(IGuicePreDestroy.class).add(this);
+      getLog().info("🚀 Opening serial port '{}' at {} baud", getComPortName(), getBaudRate().toInt());
+      connectionPort.openPort();
+      if (connectionPort.isOpen())
+      {
+        afterConnect();
+        registerShutdownHook();
+        setComPortStatus(Idle);
+        getLog().info("✅ Serial port connected: '{}'", getComPortName());
+      }
+      else
+      {
+        setComPortStatus(Missing);
+      }
     }
-
-    /**
-     * Sets the COM port number.
-     *
-     * @param comPort the COM port number (e.g., 1 for COM1)
-     * @return this instance for method chaining
-     */
-    public J setComPort(int comPort)
+    catch (Throwable e)
     {
-        this.comPort = comPort;
-        return (J)this;
+      getLog().error("❌ Failed to open serial port '{}': {}", getComPortName(), e.getMessage(), e);
+      onConnectError(e, ComPortStatus.GeneralException);
     }
+    return (J) this;
+  }
 
-    /**
-     * Gets the logger for this connection.
-     * <p>
-     * If the logger doesn't exist yet, it is created with a specific format and file name
-     * based on the COM port number.
-     *
-     * @return the logger for this connection
-     */
-    public org.apache.logging.log4j.core.Logger getLog()
+  /**
+   * Disconnects from the serial port.
+   * <p>
+   * This method closes the port if it is open and sets the connection status to
+   * {@link ComPortStatus#Offline}.
+   *
+   * @return this instance for method chaining
+   */
+  public J disconnect()
+  {
+    if (connectionPort != null && connectionPort.isOpen())
     {
-        if(log == null)
-            log = LogUtils.getSpecificRollingLogger("COM" + comPort, "cerial",
-                    "[%d{yyyy-MM-dd HH:mm:ss.SSS}] [%-5level] - [%msg]%n",true);
-        return log;
+      getLog().info("⚠️ Disconnecting serial port '{}'", getComPortName());
+      connectionPort.closePort();
+      setComPortStatus(Offline);
+      getLog().info("✅ Serial port disconnected: '{}'", getComPortName());
     }
+    return (J) this;
+  }
 
-    /**
-     * Creates a new serial port connection with the specified parameters and a default idle timeout of 120 seconds.
-     *
-     * @param comPort  the COM port number (e.g., 1 for COM1)
-     * @param baudRate the baud rate for the connection
-     */
-    public CerialPortConnection(int comPort, BaudRate baudRate)
+  private int computeNextDelaySeconds()
+  {
+    // exponential backoff: 1,2,4,8,... capped at maxReconnectDelaySeconds
+    int pow;
+    try
     {
-        this(comPort, baudRate, 120);
+      pow = Math.multiplyExact(1, 1 << Math.min(reconnectAttempts, 16));
     }
-
-    /**
-     * Gets the idle monitor for this connection.
-     * <p>
-     * If the monitor doesn't exist yet, it is created with default settings.
-     *
-     * @return the idle monitor for this connection
-     */
-    public CerialIdleMonitor getMonitor()
+    catch (ArithmeticException ex)
     {
-        if (monitor == null)
+      pow = Integer.MAX_VALUE;
+    }
+    int candidate = Math.max(1, initialReconnectDelaySeconds) * pow;
+    int delay = Math.min(candidate, Math.max(1, maxReconnectDelaySeconds));
+    reconnectAttempts++;
+    return delay;
+  }
+
+  private void cancelReconnectTimer()
+  {
+    if (reconnectTimerId != -1L)
+    {
+      try
+      {
+        IGuiceContext.get(Vertx.class).cancelTimer(reconnectTimerId);
+      }
+      catch (Throwable ignore)
+      {
+        // ignore
+      }
+      reconnectTimerId = -1L;
+    }
+  }
+
+  private void resetReconnectBackoff()
+  {
+    reconnectAttempts = 0;
+    cancelReconnectTimer();
+  }
+
+  protected J scheduleReconnect(String reason)
+  {
+    if (connectionPort != null && connectionPort.isOpen())
+    {
+      // Already connected
+      return (J) this;
+    }
+    if (reconnectTimerId != -1L)
+    {
+      // A reconnect attempt is already scheduled; avoid frenzy
+      getLog().debug("⏳ Reconnect already scheduled for '{}' (timerId={})", getComPortName(), reconnectTimerId);
+      return (J) this;
+    }
+    int delaySeconds = computeNextDelaySeconds();
+    getLog().warn("🔄 Scheduling reconnect for '{}' in {}s (attempt {}) - Reason: {}", getComPortName(), delaySeconds, reconnectAttempts, reason);
+    Vertx vertx = IGuiceContext.get(Vertx.class);
+    reconnectTimerId = vertx.setTimer(delaySeconds * 1000L, id -> {
+      reconnectTimerId = -1L;
+      try
+      {
+        getLog().info("🔌 Attempting reconnect to '{}' (attempt {})", getComPortName(), reconnectAttempts);
+        connect();
+        if (connectionPort != null && connectionPort.isOpen())
         {
-            this.setMonitor(new CerialIdleMonitor(this, 2, 120, idleTimerSeconds));
+          getLog().info("✅ Reconnected to '{}'", getComPortName());
+          resetReconnectBackoff();
         }
-        return monitor;
-    }
+        else
+        {
+          // Not yet connected; schedule next attempt
+          scheduleReconnect("Port not open after connect() attempt");
+        }
+      }
+      catch (Throwable t)
+      {
+        onConnectError(t, ComPortStatus.GeneralException);
+      }
+    });
+    return (J) this;
+  }
 
-    /**
-     * Connects to the serial port.
-     * <p>
-     * This method performs the following steps:
-     * <ol>
-     *   <li>Calls {@link #beforeConnect()} to prepare the connection</li>
-     *   <li>Opens the port</li>
-     *   <li>If successful, calls {@link #afterConnect()} to set up listeners and monitoring</li>
-     *   <li>Registers a shutdown hook for proper cleanup</li>
-     *   <li>Sets the connection status to {@link ComPortStatus#Idle}</li>
-     * </ol>
-     * <p>
-     * If the connection fails, the status is set to {@link ComPortStatus#Missing} or
-     * {@link ComPortStatus#GeneralException} depending on the error.
-     *
-     * @return this instance for method chaining
-     */
-    public J connect()
+  public J beforeConnect()
+  {
+    if (callScoper == null)
     {
-        beforeConnect();
+      IGuiceContext.instance()
+          .inject()
+          .injectMembers(this)
+      ;
+    }
+    getLog().debug("📋 Preparing connection - Port: '{}', Baud: {}, DataBits: {}, Parity: {}, StopBits: {}, Flow: {}",
+        getComPortName(), getBaudRate().toInt(), getDataBits(), getParity(), getStopBits(), flow);
+    configure(connectionPort);
+    return (J) this;
+  }
+
+  public J afterConnect()
+  {
+    setComPortStatus(Silent);
+    getLog().debug("📋 Post-connect setup for '{}'", getComPortName());
+    connectionPort.removeDataListener();
+    connectionPort.addDataListener(serialPortMessageListener);
+    if (flow != null && flow != FlowType.None)
+    {
+      switch (flow)
+      {
+        case XONXOFF:
+          setXOnXOff();
+          break;
+        case RTSCTS:
+          setRts();
+          break;
+      }
+    }
+    getLog().debug("📊 Starting idle monitor ({}s) for '{}'", idleTimerSeconds, getComPortName());
+    getMonitor().begin();
+    // Successful connect -> reset backoff and cancel any pending reconnect timers
+    resetReconnectBackoff();
+    return (J) this;
+  }
+
+  public J setXOnXOff()
+  {
+    connectionPort.setFlowControl(SerialPort.FLOW_CONTROL_XONXOFF_IN_ENABLED | SerialPort.FLOW_CONTROL_XONXOFF_OUT_ENABLED);
+    getLog().debug("📋 Configured flow control: XON/XOFF for '{}'", getComPortName());
+    return (J) this;
+  }
+
+  public J setRts()
+  {
+    connectionPort.setFlowControl(SerialPort.FLOW_CONTROL_RTS_ENABLED | SerialPort.FLOW_CONTROL_CTS_ENABLED);
+    getLog().debug("📋 Configured flow control: RTS/CTS for '{}'", getComPortName());
+    return (J) this;
+  }
+
+
+  public J setDsr()
+  {
+    connectionPort.setFlowControl(SerialPort.FLOW_CONTROL_DSR_ENABLED | SerialPort.FLOW_CONTROL_DTR_ENABLED);
+    getLog().debug("📋 Configured flow control: DSR/DTR for '{}'", getComPortName());
+    return (J) this;
+  }
+
+
+  public J onConnectError(Throwable e, ComPortStatus status)
+  {
+       getLog().error("❌ Error on '{}': {}", getComPortName(), e.getMessage(), e);
+    if (comPortError != null)
+    {
+      comPortError.accept(e, this, status);
+    }
+    else
+    {
+      setComPortStatus(status);
+    }
+    disconnect();
+    if (monitor != null)
+    {
+      monitor.end();
+    }
+    // Schedule reconnect with backoff
+    scheduleReconnect(e != null ? String.valueOf(e.getMessage()) : String.valueOf(status));
+    return (J) this;
+  }
+
+  public J onComPortStatusUpdate(BiConsumer<CerialPortConnection<?>, ComPortStatus> comPortStatusUpdate)
+  {
+    this.comPortStatusUpdate = comPortStatusUpdate;
+    return (J) this;
+  }
+
+  public J setComPortStatus(ComPortStatus comPortStatus, boolean... update)
+  {
+    if (this.comPortStatus != comPortStatus && (
+        (update != null && update.length == 0) ||
+            (update != null && update[0]))
+    )
+    {
+      if (this.comPortStatusUpdate != null)
+      {
+        this.comPortStatusUpdate.accept(this, comPortStatus);
+      }
+    }
+    this.comPortStatus = comPortStatus;
+    return (J) this;
+  }
+
+  protected J registerShutdownHook()
+  {
+    IGuiceContext.instance()
+        .loadPreDestroyServices()
+        .add(this)
+    ;
+    getLog().debug("📋 Registered shutdown hook for '{}'", getComPortName());
+    return (J) this;
+  }
+
+  protected J afterShutdown()
+  {
+    getLog().info("🌟 Shutdown completed for '{}'", getComPortName());
+    return (J) this;
+  }
+
+  protected J beforeShutdown()
+  {
+    getLog().info("⚠️ Shutting down serial port '{}'", getComPortName());
+    getMonitor().end();
+    return (J) this;
+  }
+
+  protected J configure(SerialPort instance)
+  {
+    return (J) this;
+  }
+
+  private J me()
+  {
+    return (J) this;
+  }
+
+  @JsonProperty
+  protected String getComPortName()
+  {
+    String name;
+    if (OSValidator.isWindows())
+    {
+      name = "COM" + getComPort();
+    }
+    else
+    {
+      name = "/dev/ttyUSB" + getComPort() + " " + getBaudRate().toInt();
+    }
+    if (getLog() != null && getLog().isDebugEnabled())
+    {
+      getLog().trace("📝 Computed port name: '{}'", name);
+    }
+    return name;
+  }
+
+  /**
+   * Writes a message to the serial port.
+   * <p>
+   * This method sends the specified message to the serial port. If the message doesn't
+   * end with a newline character, one is automatically added. The message is logged
+   * with the COM port number and the message content.
+   * <p>
+   * If the port is not open, the message is not sent and a trace log entry is made.
+   *
+   * @param message                the message to send
+   * @param checkForEndOfCharacter optional parameter (not used in the current implementation)
+   * @throws RuntimeException if an error occurs while writing to the port (wrapped by @SneakyThrows)
+   */
+  public void write(String message, boolean... checkForEndOfCharacter)
+  {
+    if (connectionPort != null && connectionPort.isOpen())
+    {
+      if (!Strings.isNullOrEmpty(message))
+      {
+        if (!message.endsWith(String.valueOf('\n')))
+        {
+          message += '\n';
+        }
         try
         {
-            connectionPort.openPort();
-            if (connectionPort.isOpen())
-            {
-                afterConnect();
-                registerShutdownHook();
-                setComPortStatus(Idle);
-                getLog().trace("✅ Com Port Connected - {}", getComPortName());
-            } else
-            {
-                setComPortStatus(Missing);
-            }
-        } catch (Throwable e)
-        {
-            getLog().fatal("❌ Error connecting to port: {}", e.getMessage(), e);
-            onConnectError(e, ComPortStatus.GeneralException);
+          connectionPort.writeBytes(message.getBytes(StandardCharsets.UTF_8), message.length());
+          getLog().info("📤 TX - Port {} - Message: {}", portNumberFormat.format(getComPort()), message.trim());
         }
-        return (J) this;
-    }
-
-    /**
-     * Disconnects from the serial port.
-     * <p>
-     * This method closes the port if it is open and sets the connection status to
-     * {@link ComPortStatus#Offline}.
-     *
-     * @return this instance for method chaining
-     */
-    public J disconnect()
-    {
-        if (connectionPort != null && connectionPort.isOpen())
+        catch (Throwable t)
         {
-            connectionPort.closePort();
-            setComPortStatus(Offline);
+          getLog().error("❌ Write failed on '{}': {}", getComPortName(), t.getMessage(), t);
+          onConnectError(t, ComPortStatus.GeneralException);
         }
-        return (J) this;
+      }
+      //log.warn("TX : {}", message);
     }
-
-    public J beforeConnect()
+    else
     {
-        if (callScoper == null)
-        {
-            IGuiceContext.instance()
-                    .inject()
-                    .injectMembers(this);
-        }
-        configure(connectionPort);
-        return (J) this;
+      getLog().trace("⚠️ Message NOT sent - Port not open - Message: [{}]", message);
     }
+  }
 
-    public J afterConnect()
+  /**
+   * Cleans up resources when the object is destroyed.
+   * <p>
+   * This method is called by the GuicedInjection framework during application shutdown.
+   * It disconnects from the serial port if it is open, ensuring proper resource cleanup.
+   * <p>
+   * This implementation of the {@link IGuicePreDestroy} interface ensures that serial
+   * port connections are properly closed when the application shuts down.
+   */
+  @Override
+  public void onDestroy()
+  {
+    getLog().info("⚠️ onDestroy invoked for '{}'", getComPortName());
+    if (connectionPort != null)
     {
-        setComPortStatus(Silent);
-        connectionPort.removeDataListener();
-        connectionPort.addDataListener(serialPortMessageListener);
-        if (flow != null && flow != FlowType.None)
-        {
-            switch (flow)
-            {
-                case XONXOFF:
-                    setXOnXOff();
-                    break;
-                case RTSCTS:
-                    setRts();
-                    break;
-            }
-        }
-
-        getMonitor().begin();
-        return (J) this;
-    }
-
-    public J setXOnXOff()
-    {
-        connectionPort.setFlowControl(SerialPort.FLOW_CONTROL_XONXOFF_IN_ENABLED | SerialPort.FLOW_CONTROL_XONXOFF_OUT_ENABLED);
-        return (J) this;
-    }
-
-    public J setRts()
-    {
-        connectionPort.setFlowControl(SerialPort.FLOW_CONTROL_RTS_ENABLED | SerialPort.FLOW_CONTROL_CTS_ENABLED);
-        return (J) this;
-    }
-
-
-    public J setDsr()
-    {
-        connectionPort.setFlowControl(SerialPort.FLOW_CONTROL_DSR_ENABLED | SerialPort.FLOW_CONTROL_DTR_ENABLED);
-        return (J) this;
-    }
-
-
-    public J onConnectError(Throwable e, ComPortStatus status)
-    {
-        if (comPortError != null)
-        {
-            comPortError.accept(e, this, status);
-        } else
-        {
-            getLog().error("❌ Error connecting to port: {}", e.getMessage(), e);
-            setComPortStatus(status);
-        }
+      if (connectionPort.isOpen())
+      {
         disconnect();
-        monitor.end();
-        return (J) this;
+      }
     }
+  }
 
-    public J onComPortStatusUpdate(BiConsumer<CerialPortConnection<?>, ComPortStatus> comPortStatusUpdate)
+  @SuppressWarnings("unused")
+  private static class OSValidator
+  {
+    private static final String OS = System.getProperty("os.name")
+                                         .toLowerCase();
+
+    public static boolean isWindows()
     {
-        this.comPortStatusUpdate = comPortStatusUpdate;
-        return (J) this;
+      return OS.contains("win");
     }
 
-    public J setComPortStatus(ComPortStatus comPortStatus, boolean... update)
+    public static boolean isMac()
     {
-        if (this.comPortStatus != comPortStatus && (
-                (update != null && update.length == 0) ||
-                        (update != null && update[0]))
-        )
-        {
-            if (this.comPortStatusUpdate != null)
-            {
-                this.comPortStatusUpdate.accept(this, comPortStatus);
-            }
-        }
-        this.comPortStatus = comPortStatus;
-        return (J) this;
+      return OS.contains("mac");
     }
 
-    protected J registerShutdownHook()
+    public static boolean isUnix()
     {
-        IGuiceContext.instance().loadPreDestroyServices()
-                .add(this);
-        return (J) this;
+      return (OS.contains("nix") || OS.contains("nux") || OS.contains("aix"));
     }
 
-    protected J afterShutdown()
+    public static boolean isSolaris()
     {
-        return (J) this;
+      return OS.contains("sunos");
     }
+  }
 
-    protected J beforeShutdown()
+  public J setComPort(Integer comPort)
+  {
+    this.comPort = comPort;
+    return (J) this;
+  }
+
+  public J setBaudRate(BaudRate baudRate)
+  {
+    this.baudRate = baudRate;
+    return (J) this;
+  }
+
+  public J setComPortStatus(ComPortStatus comPortStatus)
+  {
+    if (this.comPortStatus != comPortStatus && this.comPortStatusUpdate != null)
     {
-        getMonitor().end();
-        return (J) this;
+      getLog().debug("🔄 Updating port status: Port [{}] changing to [{}]", comPort, comPortStatus);
+      this.comPortStatusUpdate.accept(this, comPortStatus);
     }
+    this.comPortStatus = comPortStatus;
+    return (J) this;
+  }
 
-    protected J configure(SerialPort instance)
+  public J setComPortType(ComPortType comPortType)
+  {
+    this.comPortType = comPortType;
+    return (J) this;
+  }
+
+  public J setDataBits(DataBits dataBits)
+  {
+    this.dataBits = dataBits;
+    return (J) this;
+  }
+
+  public J setFlowControl(FlowControl flowControl)
+  {
+    this.flowControl = flowControl;
+    return (J) this;
+  }
+
+  public J setParity(Parity parity)
+  {
+    this.parity = parity;
+    return (J) this;
+  }
+
+  public J setStopBits(StopBits stopBits)
+  {
+    this.stopBits = stopBits;
+    return (J) this;
+  }
+
+  public J setBufferSize(Integer bufferSize)
+  {
+    this.bufferSize = bufferSize;
+    return (J) this;
+  }
+
+  public J setWriter(OutputStream writer)
+  {
+    this.writer = writer;
+    return (J) this;
+  }
+
+  public J setComPortStatusUpdate(BiConsumer<CerialPortConnection<?>, ComPortStatus> comPortStatusUpdate)
+  {
+    this.comPortStatusUpdate = comPortStatusUpdate;
+    return (J) this;
+  }
+
+  public J setComPortRead(BiConsumer<byte[], com.fazecast.jSerialComm.SerialPort> comPortRead)
+  {
+    if (this.serialPortMessageListener == null)
     {
-        return (J) this;
+      getLog().warn("⚠️ Port '{}' not yet ready to register read listener", getComPortName());
+      return (J) this;
     }
+    ((ComPortEvents) serialPortMessageListener).setComPortRead(comPortRead);
+    getLog().debug("🔗 Read listener registered for '{}'", getComPortName());
+    return (J) this;
+  }
 
-    private J me()
-    {
-        return (J) this;
-    }
+  public J setComPortError(TriConsumer<Throwable, CerialPortConnection<?>, ComPortStatus> comPortError)
+  {
+    this.comPortError = comPortError;
+    return (J) this;
+  }
 
-    @JsonProperty
-    protected String getComPortName()
-    {
-        if (OSValidator.isWindows())
-        {
-            return "COM" + getComPort();
-        } else
-        {
-            return "/dev/ttyUSB" + getComPort() + " " + getBaudRate().toInt();
-        }
-    }
+  public J setMonitor(CerialIdleMonitor monitor)
+  {
+    this.monitor = monitor;
+    return (J) this;
+  }
 
-    /**
-     * Writes a message to the serial port.
-     * <p>
-     * This method sends the specified message to the serial port. If the message doesn't
-     * end with a newline character, one is automatically added. The message is logged
-     * with the COM port number and the message content.
-     * <p>
-     * If the port is not open, the message is not sent and a trace log entry is made.
-     *
-     * @param message                the message to send
-     * @param checkForEndOfCharacter optional parameter (not used in the current implementation)
-     * @throws RuntimeException if an error occurs while writing to the port (wrapped by @SneakyThrows)
-     */
-    @SneakyThrows
-    public void write(String message, boolean... checkForEndOfCharacter)
-    {
-        if (connectionPort != null && connectionPort.isOpen())
-        {
-            if(!Strings.isNullOrEmpty(message))
-            {
-                if (!message.endsWith(String.valueOf('\n')))
-                {
-                    message += '\n';
-                }
-                connectionPort.writeBytes(message.getBytes(StandardCharsets.UTF_8), message.length());
-                getLog().info("📤 TX] - Port [{}] - Message: [{}]", portNumberFormat.format(getComPort()), message.trim());
-            }
-            //log.warn("TX : {}", message);
-        } else
-        {
-            getLog().trace("⚠️ Message NOT sent - Port not open - Message: [{}]", message);
-        }
-    }
-
-    /**
-     * Cleans up resources when the object is destroyed.
-     * <p>
-     * This method is called by the GuicedInjection framework during application shutdown.
-     * It disconnects from the serial port if it is open, ensuring proper resource cleanup.
-     * <p>
-     * This implementation of the {@link IGuicePreDestroy} interface ensures that serial
-     * port connections are properly closed when the application shuts down.
-     */
-    @Override
-    public void onDestroy()
-    {
-        if (connectionPort != null)
-            if (connectionPort.isOpen())
-            {
-                disconnect();
-            }
-    }
-
-    @SuppressWarnings("unused")
-    private static class OSValidator
-    {
-        private static final String OS = System.getProperty("os.name")
-                .toLowerCase();
-
-        public static boolean isWindows()
-        {
-            return OS.contains("win");
-        }
-
-        public static boolean isMac()
-        {
-            return OS.contains("mac");
-        }
-
-        public static boolean isUnix()
-        {
-            return (OS.contains("nix") || OS.contains("nux") || OS.contains("aix"));
-        }
-
-        public static boolean isSolaris()
-        {
-            return OS.contains("sunos");
-        }
-    }
-
-    public J setComPort(Integer comPort)
-    {
-        this.comPort = comPort;
-        return (J) this;
-    }
-
-    public J setBaudRate(BaudRate baudRate)
-    {
-        this.baudRate = baudRate;
-        return (J) this;
-    }
-
-    public J setComPortStatus(ComPortStatus comPortStatus)
-    {
-        if (this.comPortStatus != comPortStatus && this.comPortStatusUpdate != null)
-        {
-            getLog().debug("🔄 Updating port status: Port [{}] changing to [{}]", comPort, comPortStatus);
-            this.comPortStatusUpdate.accept(this, comPortStatus);
-        }
-        this.comPortStatus = comPortStatus;
-        return (J) this;
-    }
-
-    public J setComPortType(ComPortType comPortType)
-    {
-        this.comPortType = comPortType;
-        return (J) this;
-    }
-
-    public J setDataBits(DataBits dataBits)
-    {
-        this.dataBits = dataBits;
-        return (J) this;
-    }
-
-    public J setFlowControl(FlowControl flowControl)
-    {
-        this.flowControl = flowControl;
-        return (J) this;
-    }
-
-    public J setParity(Parity parity)
-    {
-        this.parity = parity;
-        return (J) this;
-    }
-
-    public J setStopBits(StopBits stopBits)
-    {
-        this.stopBits = stopBits;
-        return (J) this;
-    }
-
-    public J setBufferSize(Integer bufferSize)
-    {
-        this.bufferSize = bufferSize;
-        return (J) this;
-    }
-
-    public J setWriter(OutputStream writer)
-    {
-        this.writer = writer;
-        return (J) this;
-    }
-
-    public J setComPortStatusUpdate(BiConsumer<CerialPortConnection<?>, ComPortStatus> comPortStatusUpdate)
-    {
-        this.comPortStatusUpdate = comPortStatusUpdate;
-        return (J) this;
-    }
-
-    public J setComPortRead(BiConsumer<byte[], com.fazecast.jSerialComm.SerialPort> comPortRead)
-    {
-        if (this.serialPortMessageListener == null)
-        {
-            getLog().warn("Port not yet ready");
-            return (J) this;
-        }
-        ((ComPortEvents) serialPortMessageListener).setComPortRead(comPortRead);
-        return (J) this;
-    }
-
-    public J setComPortError(TriConsumer<Throwable, CerialPortConnection<?>, ComPortStatus> comPortError)
-    {
-        this.comPortError = comPortError;
-        return (J) this;
-    }
-
-    public J setMonitor(CerialIdleMonitor monitor)
-    {
-        this.monitor = monitor;
-        return (J) this;
-    }
-
-    public J setLastMessageTime(LocalDateTime lastMessageTime)
-    {
-        this.lastMessageTime = lastMessageTime;
-        return (J) this;
-    }
+  public J setLastMessageTime(LocalDateTime lastMessageTime)
+  {
+    this.lastMessageTime = lastMessageTime;
+    return (J) this;
+  }
 }
