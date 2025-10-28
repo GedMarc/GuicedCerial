@@ -16,7 +16,6 @@ public enum ComPortStatus
 	Simulation("galaxy", "bg-purple", "text-purple"),
 	Opening("outlet", "bg-info", "text-info"),
 	Silent("lightbulb-exclamation", "bg-warning", "text-warning"),
-	Idle("lightbulb", "bg-warning", "text-warning"),
 	Logging("wind-turbine", "bg-info", "text-info"),
 	Running("lightbulb-on", "bg-success", "text-success");
 	
@@ -28,10 +27,10 @@ public enum ComPortStatus
 	
 	public static final EnumSet<ComPortStatus> exceptionOperations = EnumSet.of(GeneralException,Missing,InUse,Offline) ;
 	public static final EnumSet<ComPortStatus> pauseOperations = EnumSet.of(OperationInProgress,FileTransfer,Opening) ;
-	public static final EnumSet<ComPortStatus> portActive = EnumSet.of(Silent,Idle,Logging,Running,Simulation);
+	public static final EnumSet<ComPortStatus> portActive = EnumSet.of(Silent, Logging, Running, Simulation);
 	public static final EnumSet<ComPortStatus> portOffline = EnumSet.of(Offline);
 
-	public static final EnumSet<ComPortStatus> onlineServerStatus = EnumSet.of(Simulation, Idle, Opening, Logging, OperationInProgress, Running, Silent, FileTransfer);
+	public static final EnumSet<ComPortStatus> onlineServerStatus = EnumSet.of(Simulation, Opening, Logging, OperationInProgress, Running, Silent, FileTransfer);
 
 	
 	ComPortStatus(String icon, String backgroundClass, String foregroundClass)

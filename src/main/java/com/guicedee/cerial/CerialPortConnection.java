@@ -349,7 +349,7 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
    *   <li>Opens the port</li>
    *   <li>If successful, calls {@link #afterConnect()} to set up listeners and monitoring</li>
    *   <li>Registers a shutdown hook for proper cleanup</li>
-   *   <li>Sets the connection status to {@link ComPortStatus#Idle}</li>
+   *   <li>Sets the connection status to {@link ComPortStatus#Silent}</li>
    * </ol>
    * <p>
    * If the connection fails, the status is set to {@link ComPortStatus#Missing} or
@@ -372,7 +372,7 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
       {
         afterConnect();
         registerShutdownHook();
-        setComPortStatus(Idle);
+        setComPortStatus(Silent);
         getLog().info("✅ Serial port connected: '{}'", getComPortName());
       }
       else

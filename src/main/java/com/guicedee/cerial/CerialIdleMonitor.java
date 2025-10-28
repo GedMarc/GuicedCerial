@@ -19,7 +19,7 @@ import static com.guicedee.cerial.enumerations.ComPortStatus.exceptionOperations
  * <p>
  * This class uses a Vert.x periodic timer to check if a serial port connection has been
  * idle for a specified period of time. If the connection has been idle for longer than
- * the specified time, its status is updated to {@link ComPortStatus#Idle}.
+ * the specified time, its status is updated to {@link ComPortStatus#Silent}.
  * <p>
  * The monitor can be started with the {@link #begin()} method and stopped with the
  * {@link #end()} method.
@@ -91,7 +91,7 @@ public class CerialIdleMonitor
      * <p>
      * This method sets up a periodic timer using Vert.x to check if the connection
      * has been idle for longer than the specified time. If it has, the connection's
-     * status is updated to {@link ComPortStatus#Idle}.
+     * status is updated to {@link ComPortStatus#Silent}.
      */
     public void begin()
     {
@@ -106,7 +106,7 @@ public class CerialIdleMonitor
 
                     ))
             {
-                connection.setComPortStatus(ComPortStatus.Idle);
+                connection.setComPortStatus(ComPortStatus.Silent);
             }
         });
     }
