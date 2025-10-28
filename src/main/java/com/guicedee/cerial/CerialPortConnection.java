@@ -306,7 +306,8 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
   {
     if (log == null)
     {
-      log = LogUtils.getSpecificRollingLogger("COM" + comPort, "cerial",
+      String loggerName = (comPort == 0) ? "cerial" : "COM" + comPort;
+      log = LogUtils.getSpecificRollingLogger(loggerName, "cerial",
           "[%d{yyyy-MM-dd HH:mm:ss.SSS}] [%-5level] - [%msg]%n", true);
     }
     return log;

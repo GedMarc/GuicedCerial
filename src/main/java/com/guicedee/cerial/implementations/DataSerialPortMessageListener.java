@@ -62,7 +62,8 @@ public class DataSerialPortMessageListener implements SerialPortMessageListener,
         this.delimiter = delimiter;
         this.comPort = comPort;
         this.connection = connection;
-        log = LogUtils.getSpecificRollingLogger("COM" + connection.getComPort(), "cerial",
+        String loggerName = (connection.getComPort() == 0) ? "cerial" : "COM" + connection.getComPort();
+        log = LogUtils.getSpecificRollingLogger(loggerName, "cerial",
                 "[%d{yyyy-MM-dd HH:mm:ss.SSS}] [%-5level] - [%msg]%n",true);
     }
 
@@ -130,7 +131,10 @@ public class DataSerialPortMessageListener implements SerialPortMessageListener,
         if (Strings.isNullOrEmpty(new String(newData).trim()))
             return;
 
-        log.info("RX -  " + new String(newData).trim());
+        String rxMessage = new String(newData, StandardCharsets.UTF_8).trim();
+        if (!rxMessage.isEmpty()) {
+            log.info("📥 RX - Port {} - Message: {}", portNumberFormat.format(connection.getComPort()), rxMessage);
+        }
         var vertx =IGuiceContext.get(Vertx.class);
         vertx.executeBlocking(() -> {
             var callScoper = IGuiceContext.get(CallScoper.class);
@@ -149,6 +153,8 @@ public class DataSerialPortMessageListener implements SerialPortMessageListener,
                 if (comPortRead != null)
                 {
                     comPortRead.accept(newData, comPort);
+                }else {
+                  log.warn("Nowhere to post the message for COM {} : {}",comPort,new String(newData).trim());
                 }
             } catch (Throwable T)
             {
