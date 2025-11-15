@@ -8,36 +8,23 @@ import com.guicedee.cerial.SerialPortException;
 import com.guicedee.cerial.enumerations.ComPortStatus;
 import com.guicedee.client.CallScoper;
 import com.guicedee.client.IGuiceContext;
-import com.guicedee.guicedinjection.LogUtils;
+import com.guicedee.client.LogUtils;
 import com.guicedee.client.CallScopeProperties;
 import com.guicedee.client.CallScopeSource;
 import io.vertx.core.Vertx;
 import lombok.Getter;
 import lombok.Setter;
-import lombok.extern.java.Log;
-import lombok.extern.log4j.Log4j2;
-import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.logging.log4j.core.Logger;
 
-import java.io.File;
-import java.io.IOException;
-import java.time.OffsetDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.BiConsumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static com.fazecast.jSerialComm.SerialPort.*;
 import static com.guicedee.cerial.CerialPortConnection.portNumberFormat;
-import static com.guicedee.cerial.enumerations.ComPortStatus.Offline;
 import static com.guicedee.cerial.enumerations.ComPortStatus.Running;
-import static lombok.AccessLevel.PRIVATE;
 
 @Getter
 @Setter
@@ -79,7 +66,7 @@ public class DataSerialPortBytesListener implements SerialPortDataListenerWithEx
         this.connection = connection;
         String loggerName = (connection.getComPort() == 0) ? "cerial" : "COM" + connection.getComPort();
         log = LogUtils.getSpecificRollingLogger(loggerName, "cerial",
-                "[%d{yyyy-MM-dd HH:mm:ss.SSS}] [%-5level] - [%msg]%n",true);
+                "[%d{yyyy-MM-dd HH:mm:ss.SSS}] [%-5level] - [%msg]%n",false);
     }
 
     @Override

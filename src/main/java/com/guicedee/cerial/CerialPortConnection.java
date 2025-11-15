@@ -12,29 +12,18 @@ import com.guicedee.cerial.enumerations.*;
 import com.guicedee.cerial.implementations.*;
 import com.guicedee.client.CallScoper;
 import com.guicedee.client.IGuiceContext;
-import com.guicedee.guicedinjection.LogUtils;
+import com.guicedee.client.LogUtils;
 import com.guicedee.guicedinjection.interfaces.IGuicePreDestroy;
 import com.guicedee.services.jsonrepresentation.IJsonRepresentation;
 import io.vertx.core.Vertx;
-import io.smallrye.mutiny.Uni;
 import lombok.*;
-import lombok.extern.log4j.Log4j2;
-import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.function.TriConsumer;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
-import java.io.File;
-import java.io.IOException;
 import java.io.OutputStream;
 import java.io.Serial;
 import java.nio.charset.StandardCharsets;
 import java.text.NumberFormat;
-import java.time.Duration;
 import java.time.LocalDateTime;
-import java.time.OffsetDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.HashSet;
 import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
@@ -42,7 +31,6 @@ import java.util.function.BiConsumer;
 import static com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.ANY;
 import static com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.NONE;
 import static com.guicedee.cerial.enumerations.ComPortStatus.*;
-import static lombok.AccessLevel.PRIVATE;
 
 /**
  * Main class for managing serial port connections in the GuicedCerial module.
@@ -308,7 +296,7 @@ public class CerialPortConnection<J extends CerialPortConnection<J>> implements 
     {
       String loggerName = (comPort == 0) ? "cerial" : "COM" + comPort;
       log = LogUtils.getSpecificRollingLogger(loggerName, "cerial",
-          "[%d{yyyy-MM-dd HH:mm:ss.SSS}] [%-5level] - [%msg]%n", true);
+          "[%d{yyyy-MM-dd HH:mm:ss.SSS}] [%-5level] - [%msg]%n", false);
     }
     return log;
   }

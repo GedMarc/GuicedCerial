@@ -10,32 +10,24 @@ import com.guicedee.cerial.SerialPortException;
 import com.guicedee.cerial.enumerations.ComPortStatus;
 import com.guicedee.client.CallScoper;
 import com.guicedee.client.IGuiceContext;
-import com.guicedee.guicedinjection.LogUtils;
+import com.guicedee.client.LogUtils;
 import com.guicedee.client.CallScopeProperties;
 import com.guicedee.client.CallScopeSource;
 import io.vertx.core.Vertx;
 import lombok.Getter;
 import lombok.Setter;
-import lombok.extern.java.Log;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.logging.log4j.core.Logger;
 
-import java.nio.ByteBuffer;
-import java.nio.CharBuffer;
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
 
 import static com.fazecast.jSerialComm.SerialPort.*;
 import static com.guicedee.cerial.CerialPortConnection.portNumberFormat;
-import static com.guicedee.cerial.enumerations.ComPortStatus.Offline;
 import static com.guicedee.cerial.enumerations.ComPortStatus.Running;
-import static lombok.AccessLevel.PRIVATE;
 
 @Getter
 @Setter
@@ -64,7 +56,7 @@ public class DataSerialPortMessageListener implements SerialPortMessageListener,
         this.connection = connection;
         String loggerName = (connection.getComPort() == 0) ? "cerial" : "COM" + connection.getComPort();
         log = LogUtils.getSpecificRollingLogger(loggerName, "cerial",
-                "[%d{yyyy-MM-dd HH:mm:ss.SSS}] [%-5level] - [%msg]%n",true);
+                "[%d{yyyy-MM-dd HH:mm:ss.SSS}] [%-5level] - [%msg]%n",false);
     }
 
     @Override
